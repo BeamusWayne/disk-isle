@@ -40,7 +40,7 @@ fn main() {
     if let Err(error) = eframe::run_native(
         "Disk Isle",
         options,
-        Box::new(move |cc| Ok(Box::new(ui::App::new(cc, initial)))),
+        Box::new(move |cc| Ok(Box::new(ui::App::new(&cc.egui_ctx, initial)))),
     ) {
         let path = scan::cache_root();
         let _ = std::fs::create_dir_all(&path);

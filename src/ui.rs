@@ -16,6 +16,9 @@ const SUB: Color32 = Color32::from_rgb(103, 114, 106);
 const RULE: Color32 = Color32::from_rgb(222, 225, 216);
 const ACCENT: Color32 = Color32::from_rgb(82, 113, 94);
 const MINT: Color32 = Color32::from_rgb(224, 233, 223);
+const AMBER: Color32 = Color32::from_rgb(146, 115, 68);
+const AMBER_FILL: Color32 = Color32::from_rgb(242, 234, 220);
+const COMPLETION_DURATION: Duration = Duration::from_secs(6);
 const COLORS: [Color32; 6] = [
     Color32::from_rgb(135, 171, 153),
     Color32::from_rgb(145, 170, 189),
@@ -43,6 +46,26 @@ struct Branch {
     children: Vec<Branch>,
     color: Color32,
 }
+struct CompletionNotice {
+    expires_at: Instant,
+    interacting: bool,
+}
+impl CompletionNotice {
+    fn new(now: Instant) -> Self {
+        Self {
+            expires_at: now + COMPLETION_DURATION,
+            interacting: false,
+        }
+    }
+
+    fn update(&mut self, now: Instant, interacting: bool) -> bool {
+        if interacting || self.interacting {
+            self.expires_at = now + COMPLETION_DURATION;
+        }
+        self.interacting = interacting;
+        now < self.expires_at
+    }
+}
 pub struct App {
     settings: Settings,
     job: Option<Job>,
@@ -66,6 +89,8 @@ pub struct App {
     issue_rows: Vec<(String, String)>,
     last_refresh: Instant,
     space: Option<(u64, u64)>,
+    completion: Option<CompletionNotice>,
+    details_button_id: Option<Id>,
 }
 pub fn size(bytes: u64) -> String {
     let units = ["B", "KB", "MB", "GB", "TB", "PB"];
@@ -109,11 +134,187 @@ fn pill(ui: &mut Ui, label: &str, active: bool) -> Response {
         .min_size(vec2(65.0, 30.0)),
     )
 }
+#[derive(Clone, Copy)]
+enum Icon {
+    Folder,
+    Refresh,
+    Up,
+    Down,
+    Check,
+    Details,
+    Alert,
+    Pause,
+    Play,
+    Stop,
+    Leaf,
+}
+#[derive(Clone, Copy)]
+enum ButtonTone {
+    Ghost,
+    Outline,
+    Tonal,
+    Warning,
+}
+
+fn draw_icon(ui: &Ui, rect: Rect, icon: Icon, color: Color32) {
+    let center = rect.center();
+    let painter = ui.painter();
+    let stroke = Stroke::new(1.4_f32, color);
+    let line = |a: Vec2, b: Vec2| {
+        painter.line_segment([center + a, center + b], stroke);
+    };
+    match icon {
+        Icon::Folder => folder_icon(ui, rect, color, true),
+        Icon::Refresh => {
+            let points = (0..=20)
+                .map(|i| {
+                    let angle = -0.65 + (std::f32::consts::TAU - 0.9) * i as f32 / 20.0;
+                    center + Vec2::angled(angle) * 6.0
+                })
+                .collect();
+            painter.add(Shape::line(points, stroke));
+            line(vec2(5.0, -7.0), vec2(5.0, -2.0));
+            line(vec2(5.0, -2.0), vec2(0.0, -2.0));
+        }
+        Icon::Up => {
+            line(vec2(-6.0, 0.0), vec2(6.0, 0.0));
+            line(vec2(-6.0, 0.0), vec2(-1.0, -5.0));
+            line(vec2(-6.0, 0.0), vec2(-1.0, 5.0));
+        }
+        Icon::Down => {
+            line(vec2(-4.0, -2.0), vec2(0.0, 2.0));
+            line(vec2(0.0, 2.0), vec2(4.0, -2.0));
+        }
+        Icon::Check => {
+            line(vec2(-5.0, 0.0), vec2(-1.0, 4.0));
+            line(vec2(-1.0, 4.0), vec2(6.0, -4.0));
+        }
+        Icon::Details => {
+            for (x, h) in [(-5.0, 4.0), (0.0, 10.0), (5.0, 7.0)] {
+                line(vec2(x, 6.0), vec2(x, 6.0 - h));
+            }
+        }
+        Icon::Alert => {
+            painter.circle_stroke(center, 7.0, stroke);
+            line(vec2(0.0, -4.0), vec2(0.0, 1.0));
+            painter.circle_filled(center + vec2(0.0, 4.0), 0.8, color);
+        }
+        Icon::Pause => {
+            line(vec2(-3.0, -5.0), vec2(-3.0, 5.0));
+            line(vec2(3.0, -5.0), vec2(3.0, 5.0));
+        }
+        Icon::Play => {
+            painter.add(Shape::closed_line(
+                vec![
+                    center + vec2(-4.0, -5.0),
+                    center + vec2(5.0, 0.0),
+                    center + vec2(-4.0, 5.0),
+                ],
+                stroke,
+            ));
+        }
+        Icon::Stop => {
+            painter.rect_stroke(
+                Rect::from_center_size(center, vec2(10.0, 10.0)),
+                1,
+                stroke,
+                StrokeKind::Inside,
+            );
+        }
+        Icon::Leaf => {
+            painter.add(Shape::closed_line(
+                vec![
+                    center + vec2(-5.0, 5.0),
+                    center + vec2(-6.0, -1.0),
+                    center + vec2(-1.0, -5.0),
+                    center + vec2(6.0, -6.0),
+                    center + vec2(5.0, 1.0),
+                    center + vec2(1.0, 5.0),
+                ],
+                stroke,
+            ));
+            line(vec2(-6.0, 6.0), vec2(2.0, -2.0));
+        }
+    }
+}
+
+fn action_button(ui: &mut Ui, label: &str, icon: Icon, tone: ButtonTone) -> Response {
+    let enabled = ui.is_enabled();
+    let mut color = match tone {
+        ButtonTone::Tonal => ACCENT,
+        ButtonTone::Warning => AMBER,
+        _ => SUB,
+    };
+    if !enabled {
+        color = color.lerp_to_gamma(PAPER, 0.52);
+    }
+    let font = FontId::proportional(13.0);
+    let galley = ui.painter().layout_no_wrap(label.to_owned(), font, color);
+    let width = galley.size().x + 46.0;
+    let (rect, response) = ui.allocate_exact_size(vec2(width, 36.0), Sense::click());
+    response.widget_info(|| WidgetInfo::labeled(WidgetType::Button, enabled, label));
+    if ui.is_rect_visible(rect) {
+        let mut fill = match tone {
+            ButtonTone::Tonal => MINT,
+            ButtonTone::Warning => AMBER_FILL,
+            ButtonTone::Outline => PAPER,
+            ButtonTone::Ghost if response.hovered() || response.has_focus() => PANEL,
+            _ => Color32::TRANSPARENT,
+        };
+        if enabled && response.is_pointer_button_down_on() {
+            fill = fill.lerp_to_gamma(ACCENT, 0.12);
+        } else if enabled
+            && response.hovered()
+            && matches!(tone, ButtonTone::Tonal | ButtonTone::Warning)
+        {
+            fill = fill.lerp_to_gamma(ACCENT, 0.06);
+        } else if response.hovered() && matches!(tone, ButtonTone::Outline) {
+            fill = PANEL;
+        }
+        ui.painter().rect_filled(rect, 8, fill);
+        if matches!(tone, ButtonTone::Outline) || response.has_focus() {
+            ui.painter().rect_stroke(
+                rect,
+                8,
+                Stroke::new(1.0_f32, if response.has_focus() { ACCENT } else { RULE }),
+                StrokeKind::Inside,
+            );
+        }
+        draw_icon(
+            ui,
+            Rect::from_center_size(rect.left_center() + vec2(18.0, 0.0), vec2(17.0, 17.0)),
+            icon,
+            color,
+        );
+        ui.painter().galley(
+            pos2(rect.left() + 32.0, rect.center().y - galley.size().y / 2.0),
+            galley,
+            color,
+        );
+    }
+    response.on_hover_cursor(CursorIcon::PointingHand)
+}
 fn mode_button(ui: &mut Ui, mode: Mode, active: bool) -> Response {
     let (rect, response) = ui.allocate_exact_size(vec2(70.0, 30.0), Sense::click());
+    response.widget_info(|| {
+        WidgetInfo::selected(
+            WidgetType::SelectableLabel,
+            ui.is_enabled(),
+            active,
+            match mode {
+                Mode::Grid => "网格",
+                Mode::Ring => "环形",
+                Mode::Both => "对比",
+            },
+        )
+    });
     if active || response.hovered() {
         ui.painter()
             .rect_filled(rect, 7, if active { MINT } else { PANEL });
+    }
+    if response.has_focus() {
+        ui.painter()
+            .rect_stroke(rect, 7, Stroke::new(1.0_f32, ACCENT), StrokeKind::Inside);
     }
     let center = rect.left_center() + vec2(15.0, 0.0);
     let color = if active { ACCENT } else { SUB };
@@ -187,7 +388,7 @@ fn folder_icon(ui: &Ui, rect: Rect, color: Color32, directory: bool) {
     }
 }
 impl App {
-    pub fn new(cc: &eframe::CreationContext<'_>, initial: Option<PathBuf>) -> Self {
+    pub fn new(ctx: &Context, initial: Option<PathBuf>) -> Self {
         let mut fonts = FontDefinitions::default();
         for (key, path) in [
             ("segoe", "C:\\Windows\\Fonts\\segoeui.ttf"),
@@ -211,16 +412,30 @@ impl App {
             family.retain(|s| s != "segoe");
             family.insert(0, "segoe".into());
         }
-        cc.egui_ctx.set_fonts(fonts);
-        let mut style = (*cc.egui_ctx.style()).clone();
+        ctx.set_fonts(fonts);
+        let mut style = (*ctx.style()).clone();
         style.visuals = Visuals::light();
         style.visuals.override_text_color = Some(INK);
         style.visuals.panel_fill = PAPER;
         style.visuals.window_fill = PAPER;
         style.visuals.selection.bg_fill = MINT;
         style.visuals.selection.stroke = Stroke::new(1.0_f32, ACCENT);
+        style.visuals.widgets.inactive.bg_fill = PANEL;
+        style.visuals.widgets.inactive.weak_bg_fill = PANEL;
+        style.visuals.widgets.inactive.bg_stroke = Stroke::new(1.0_f32, RULE);
+        style.visuals.widgets.inactive.corner_radius = CornerRadius::same(8);
+        style.visuals.widgets.hovered.bg_fill = MINT;
+        style.visuals.widgets.hovered.weak_bg_fill = MINT;
+        style.visuals.widgets.hovered.bg_stroke = Stroke::new(1.0_f32, RULE);
+        style.visuals.widgets.hovered.corner_radius = CornerRadius::same(8);
+        style.visuals.widgets.active.bg_fill = MINT;
+        style.visuals.widgets.active.weak_bg_fill = MINT;
+        style.visuals.widgets.active.corner_radius = CornerRadius::same(8);
+        style.visuals.menu_corner_radius = CornerRadius::same(12);
+        style.visuals.window_stroke = Stroke::new(1.0_f32, RULE);
         style.spacing.item_spacing = vec2(9.0, 8.0);
-        cc.egui_ctx.set_style(style);
+        style.spacing.button_padding = vec2(10.0, 7.0);
+        ctx.set_style(style);
         let settings = std::fs::read(scan::cache_root().join("settings.json"))
             .ok()
             .and_then(|v| serde_json::from_slice(&v).ok())
@@ -248,6 +463,8 @@ impl App {
             issue_rows: vec![],
             last_refresh: Instant::now(),
             space: None,
+            completion: None,
+            details_button_id: None,
         };
         if let Some(path) = initial {
             app.begin(path);
@@ -270,6 +487,7 @@ impl App {
             self.notice = Some("请先停止当前扫描".into());
             return;
         }
+        self.completion = None;
         match scan::start(path.clone(), self.settings.profile) {
             Ok(job) => {
                 // Drop the reader before deleting the previous run's private cache.
@@ -293,6 +511,9 @@ impl App {
                 self.selected = None;
                 self.detail_open = false;
                 self.notice = None;
+                self.completion = None;
+                self.issues_open = false;
+                self.issue_rows.clear();
                 self.refresh();
             }
             Err(error) => self.notice = Some(error.to_string()),
@@ -395,18 +616,7 @@ impl App {
             .map(|j| j.events.try_iter().collect::<Vec<_>>())
             .unwrap_or_default();
         for event in events {
-            match event {
-                Event::Progress(stats) => self.stats = stats,
-                Event::Finished(stats, error) => {
-                    self.stats = stats;
-                    self.active = false;
-                    self.paused = false;
-                    if let Some(error) = error {
-                        self.notice = Some(error);
-                    }
-                    self.refresh();
-                }
-            }
+            self.handle_event(event);
         }
         if self.active {
             if self.last_refresh.elapsed() >= Duration::from_millis(650) {
@@ -414,6 +624,41 @@ impl App {
             }
             ctx.request_repaint_after(Duration::from_millis(200));
         }
+    }
+    fn handle_event(&mut self, event: Event) {
+        match event {
+            Event::Progress(stats) => self.stats = stats,
+            Event::Finished(stats, error) => {
+                self.completion = if error.is_none() && stats.complete && !stats.stopped {
+                    Some(CompletionNotice::new(Instant::now()))
+                } else {
+                    None
+                };
+                self.stats = stats;
+                self.active = false;
+                self.paused = false;
+                if let Some(error) = error {
+                    self.notice = Some(error);
+                }
+                self.refresh();
+            }
+        }
+    }
+    fn go_up(&mut self) {
+        if let Some(parent) = self.current_node.as_ref().and_then(|node| node.parent) {
+            self.current = parent;
+            self.page = 0;
+            self.large = false;
+            self.refresh();
+        }
+    }
+    fn open_scan_details(&mut self) {
+        self.issue_rows = self
+            .index
+            .as_ref()
+            .and_then(|index| index.issues().ok())
+            .unwrap_or_default();
+        self.issues_open = true;
     }
     fn navigate(&mut self, node: &Node) {
         if node.id < 0 {
@@ -454,7 +699,10 @@ impl App {
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui
-                    .add_enabled(!self.active, Button::new("选择文件夹").frame(false))
+                    .add_enabled_ui(!self.active, |ui| {
+                        action_button(ui, "选择文件夹", Icon::Folder, ButtonTone::Ghost)
+                    })
+                    .inner
                     .clicked()
                     && let Some(path) = rfd::FileDialog::new()
                         .set_title("选择要分析的文件夹")
@@ -489,52 +737,155 @@ impl App {
                 .as_ref()
                 .and_then(|p| p.file_name())
                 .map(|p| p.to_string_lossy().into_owned())
-                .unwrap_or_else(|| format!("本地磁盘 {}", path));
-            let title_width = (ui.available_width() - 210.0).max(150.0);
+                .unwrap_or_else(|| format!("本地磁盘 ({})", path.trim_end_matches(['\\', '/'])));
+            let title_width = (ui.available_width() - 370.0).max(190.0);
             ui.allocate_ui_with_layout(
-                vec2(title_width, 52.0),
+                vec2(title_width, 58.0),
                 Layout::top_down(Align::LEFT),
                 |ui| {
-                    ui.label(RichText::new(&name).size(25.0).strong());
-                    if let Some((total, used)) = self.space {
-                        ui.add(
-                            Label::new(
-                                RichText::new(format!(
-                                    "{}   ·   已用 {} / {}",
-                                    path,
-                                    size(used),
-                                    size(total)
-                                ))
-                                .size(12.0)
-                                .color(SUB),
-                            )
-                            .truncate(),
+                    let response = ui
+                        .add_enabled(
+                            !self.active,
+                            Button::new(RichText::new(format!("{name}    ")).size(25.0).strong())
+                                .frame(false)
+                                .corner_radius(9)
+                                .truncate()
+                                .min_size(vec2(0.0, 36.0)),
                         )
-                        .on_hover_text(&path);
-                    } else {
-                        ui.add(Label::new(RichText::new(&path).size(12.0).color(SUB)).truncate())
-                            .on_hover_text(&path);
+                        .on_hover_text("选择磁盘");
+                    draw_icon(
+                        ui,
+                        Rect::from_center_size(
+                            response.rect.right_center() - vec2(12.0, 0.0),
+                            vec2(16.0, 16.0),
+                        ),
+                        Icon::Down,
+                        SUB,
+                    );
+                    let mut selected_path = None;
+                    Popup::menu(&response).width(260.0).show(|ui| {
+                        ui.spacing_mut().item_spacing.y = 4.0;
+                        for drive in platform::drives() {
+                            let selected = self.root_path.as_ref() == Some(&drive);
+                            let capacity = platform::space(&drive)
+                                .map(|(total, used)| format!("{} / {}", size(used), size(total)))
+                                .unwrap_or_else(|| "选择并扫描".into());
+                            let (rect, item) = ui.allocate_exact_size(
+                                vec2(ui.available_width(), 58.0),
+                                Sense::click(),
+                            );
+                            item.widget_info(|| {
+                                WidgetInfo::labeled(
+                                    WidgetType::Button,
+                                    true,
+                                    format!("本地磁盘 {}", drive.display()),
+                                )
+                            });
+                            if selected || item.hovered() || item.has_focus() {
+                                ui.painter().rect_filled(
+                                    rect,
+                                    8,
+                                    if selected { MINT } else { PANEL },
+                                );
+                            }
+                            folder_icon(
+                                ui,
+                                Rect::from_min_size(rect.min + vec2(11.0, 18.0), vec2(22.0, 22.0)),
+                                SUB,
+                                true,
+                            );
+                            text(
+                                ui,
+                                rect.min + vec2(46.0, 11.0),
+                                Align2::LEFT_TOP,
+                                format!(
+                                    "本地磁盘 ({})",
+                                    drive.display().to_string().trim_end_matches('\\')
+                                ),
+                                14.0,
+                                INK,
+                            );
+                            text(
+                                ui,
+                                rect.min + vec2(46.0, 33.0),
+                                Align2::LEFT_TOP,
+                                capacity,
+                                12.0,
+                                SUB,
+                            );
+                            if selected {
+                                draw_icon(
+                                    ui,
+                                    Rect::from_center_size(
+                                        rect.right_center() - vec2(17.0, 0.0),
+                                        vec2(16.0, 16.0),
+                                    ),
+                                    Icon::Check,
+                                    ACCENT,
+                                );
+                            }
+                            if item.clicked() {
+                                selected_path = Some(drive);
+                                ui.close();
+                            }
+                        }
+                    });
+                    if let Some(path) = selected_path {
+                        self.begin(path);
                     }
+                    ui.add(Label::new(RichText::new(&path).size(12.0).color(SUB)).truncate())
+                        .on_hover_text(&path);
                 },
             );
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
                 if ui
-                    .add_enabled(!self.active, Button::new("重新扫描").corner_radius(8))
+                    .add_enabled_ui(!self.active, |ui| {
+                        action_button(ui, "重新扫描", Icon::Refresh, ButtonTone::Tonal)
+                    })
+                    .inner
                     .clicked()
                     && let Some(path) = self.root_path.clone()
                 {
                     self.begin(path);
                 }
-                ui.add_enabled_ui(!self.active, |ui| {
-                    ui.menu_button("切换磁盘", |ui| {
-                        for path in platform::drives() {
-                            if ui.button(path.display().to_string()).clicked() {
-                                ui.close();
-                                self.begin(path);
-                            }
-                        }
-                    });
-                });
+                if let Some((total, used)) = self.space {
+                    ui.add_space(12.0);
+                    ui.allocate_ui_with_layout(
+                        vec2(190.0, 36.0),
+                        Layout::top_down(Align::LEFT),
+                        |ui| {
+                            ui.horizontal(|ui| {
+                                ui.label(
+                                    RichText::new(format!("已用 {}", size(used)))
+                                        .size(12.0)
+                                        .color(SUB),
+                                );
+                                ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                                    ui.label(
+                                        RichText::new(format!("共 {}", size(total)))
+                                            .size(12.0)
+                                            .color(SUB),
+                                    );
+                                });
+                            });
+                            let (rect, _) = ui.allocate_exact_size(
+                                vec2(ui.available_width(), 5.0),
+                                Sense::hover(),
+                            );
+                            ui.painter().rect_filled(rect, 3, RULE);
+                            let used_rect = Rect::from_min_size(
+                                rect.min,
+                                vec2(
+                                    rect.width()
+                                        * (used as f64 / total.max(1) as f64).clamp(0.0, 1.0)
+                                            as f32,
+                                    5.0,
+                                ),
+                            );
+                            ui.painter().rect_filled(used_rect, 3, COLORS[0]);
+                        },
+                    );
+                }
             });
         });
         ui.add_space(17.0);
@@ -542,39 +893,72 @@ impl App {
         ui.add_space(6.0);
     }
     fn toolbar(&mut self, ui: &mut Ui) {
-        ui.horizontal_wrapped(|ui| {
-            let enabled = self.current_node.as_ref().and_then(|n| n.parent);
+        ui.horizontal(|ui| {
+            let has_parent = self.current_node.as_ref().and_then(|n| n.parent).is_some();
             if ui
-                .add_enabled(enabled.is_some(), Button::new("↑").frame(false))
-                .on_hover_text("上一级")
+                .add_enabled_ui(has_parent, |ui| {
+                    action_button(ui, "上一级", Icon::Up, ButtonTone::Outline)
+                })
+                .inner
+                .on_disabled_hover_text("已在扫描根目录")
+                .on_hover_text("返回上一层 · Alt + ←")
                 .clicked()
-                && let Some(id) = enabled
             {
-                self.current = id;
-                self.page = 0;
-                self.refresh();
+                self.go_up();
             }
-            for node in self.breadcrumbs.clone() {
-                let name = if node.id == 1 {
-                    "根目录"
-                } else {
-                    &node.name
-                };
-                if ui
-                    .add(Button::new(RichText::new(name).size(12.0).color(SUB)).frame(false))
-                    .clicked()
-                {
-                    self.navigate(&node);
-                }
-                ui.label(RichText::new("›").color(SUB));
-            }
-            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                for mode in [Mode::Both, Mode::Ring, Mode::Grid] {
-                    if mode_button(ui, mode, self.settings.mode == mode).clicked() {
-                        self.settings.mode = mode;
-                        self.save_preferences();
+            let path_width = (ui.available_width() - 230.0).max(40.0);
+            ui.allocate_ui_with_layout(
+                vec2(path_width, 36.0),
+                Layout::left_to_right(Align::Center),
+                |ui| {
+                    let breadcrumbs = self.breadcrumbs.clone();
+                    for (position, node) in breadcrumbs.iter().enumerate() {
+                        if position > 0 && position + 2 < breadcrumbs.len() {
+                            if position == 1 {
+                                ui.label(RichText::new("…").color(SUB));
+                            }
+                            continue;
+                        }
+                        let name = if node.id == 1 {
+                            "根目录"
+                        } else {
+                            &node.name
+                        };
+                        let width = (path_width / 3.5).clamp(35.0, 125.0);
+                        if ui
+                            .add_sized(
+                                [width, 30.0],
+                                Button::new(RichText::new(name).size(12.0).color(SUB))
+                                    .frame(false)
+                                    .truncate(),
+                            )
+                            .on_hover_text(&node.name)
+                            .clicked()
+                        {
+                            self.navigate(node);
+                        }
+                        if position + 1 < breadcrumbs.len() {
+                            ui.label(RichText::new("›").color(SUB));
+                        }
                     }
-                }
+                },
+            );
+            ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                Frame::new()
+                    .fill(PANEL)
+                    .corner_radius(10)
+                    .inner_margin(3)
+                    .show(ui, |ui| {
+                        ui.spacing_mut().item_spacing.x = 2.0;
+                        ui.horizontal(|ui| {
+                            for mode in [Mode::Both, Mode::Ring, Mode::Grid] {
+                                if mode_button(ui, mode, self.settings.mode == mode).clicked() {
+                                    self.settings.mode = mode;
+                                    self.save_preferences();
+                                }
+                            }
+                        });
+                    });
             });
         });
         ui.add_space(10.0);
@@ -1008,22 +1392,30 @@ impl App {
     }
     fn footer(&mut self, ui: &mut Ui) {
         ui.horizontal(|ui| {
-            ui.label(RichText::new("●").color(COLORS[0]).size(10.0));
+            let (status_rect, _) = ui.allocate_exact_size(vec2(18.0, 18.0), Sense::hover());
+            if self.stats.complete {
+                ui.painter()
+                    .circle_stroke(status_rect.center(), 7.0, Stroke::new(1.2_f32, ACCENT));
+                draw_icon(ui, status_rect.shrink(2.0), Icon::Check, ACCENT);
+            } else {
+                ui.painter()
+                    .circle_filled(status_rect.center(), 3.0, COLORS[0]);
+            }
             let state = if self.paused {
                 "已暂停"
             } else if self.active {
                 "正在扫描"
             } else if self.stats.stopped {
                 "已停止"
-            } else if self.stats.errors > 0 {
-                "扫描结束 · 部分目录未读取"
             } else if self.stats.complete {
                 "扫描完成"
+            } else if self.stats.errors > 0 {
+                "扫描中断"
             } else {
                 "就绪"
             };
             ui.label(RichText::new(state).color(SUB).size(12.0));
-            if self.job.is_some() {
+            if self.job.is_some() || self.stats.complete {
                 ui.label(
                     RichText::new(format!(
                         "{} 个文件 · {}",
@@ -1035,16 +1427,20 @@ impl App {
                 );
             }
             if self.active {
-                if ui
-                    .button(if self.paused { "继续" } else { "暂停" })
-                    .clicked()
+                if action_button(
+                    ui,
+                    if self.paused { "继续" } else { "暂停" },
+                    if self.paused { Icon::Play } else { Icon::Pause },
+                    ButtonTone::Outline,
+                )
+                .clicked()
                 {
                     self.paused = !self.paused;
                     if let Some(job) = &self.job {
                         job.control.pause(self.paused);
                     }
                 }
-                if ui.button("停止").clicked() {
+                if action_button(ui, "停止", Icon::Stop, ButtonTone::Outline).clicked() {
                     if let Some(job) = &self.job {
                         job.control.stop();
                     }
@@ -1052,7 +1448,13 @@ impl App {
                 }
             }
             ui.with_layout(Layout::right_to_left(Align::Center), |ui| {
-                ui.menu_button(self.settings.profile.label(), |ui| {
+                let profile_button = action_button(
+                    ui,
+                    self.settings.profile.label(),
+                    Icon::Leaf,
+                    ButtonTone::Ghost,
+                );
+                Popup::menu(&profile_button).show(|ui| {
                     for profile in [Profile::Gentle, Profile::Balanced] {
                         if ui
                             .selectable_label(profile == self.settings.profile, profile.label())
@@ -1067,23 +1469,143 @@ impl App {
                         }
                     }
                 });
-                if self.stats.errors + self.stats.skipped_links + self.stats.estimated > 0
-                    && ui
-                        .button(format!(
-                            "跳过 / 异常 {}",
-                            self.stats.errors + self.stats.skipped_links + self.stats.estimated
-                        ))
-                        .clicked()
-                {
-                    self.issue_rows = self
-                        .index
-                        .as_ref()
-                        .and_then(|i| i.issues().ok())
-                        .unwrap_or_default();
-                    self.issues_open = true;
+                if self.job.is_some() || self.stats.complete {
+                    let has_errors = self.stats.errors > 0;
+                    let label = if has_errors {
+                        format!("{} 项未读取", self.stats.errors)
+                    } else {
+                        "扫描详情".into()
+                    };
+                    let response = action_button(
+                        ui,
+                        &label,
+                        if has_errors {
+                            Icon::Alert
+                        } else {
+                            Icon::Details
+                        },
+                        if has_errors {
+                            ButtonTone::Warning
+                        } else {
+                            ButtonTone::Ghost
+                        },
+                    );
+                    self.details_button_id = Some(response.id);
+                    if response.clicked() {
+                        self.open_scan_details();
+                    }
                 }
             });
         });
+    }
+    fn completion_feedback(&mut self, ctx: &Context) {
+        if self.completion.is_none() {
+            return;
+        }
+        let has_errors = self.stats.errors > 0;
+        let color = if has_errors { AMBER } else { ACCENT };
+        let tint = if has_errors { AMBER_FILL } else { MINT };
+        let title = if has_errors {
+            format!("扫描完成，{} 项未读取", self.stats.errors)
+        } else {
+            "扫描完成".into()
+        };
+        let mut details = false;
+        let mut close = false;
+        let mut focused = false;
+        let mut close_had_focus = false;
+        let area = Area::new(Id::new("completion_notice"))
+            .anchor(Align2::RIGHT_BOTTOM, vec2(-26.0, -62.0))
+            .movable(false)
+            .order(Order::Foreground)
+            .sense(Sense::hover())
+            .show(ctx, |ui| {
+                Frame::new()
+                    .fill(PAPER)
+                    .stroke(Stroke::new(1.0_f32, RULE))
+                    .corner_radius(13)
+                    .inner_margin(Margin::symmetric(14, 12))
+                    .shadow(epaint::Shadow {
+                        offset: [0, 4],
+                        blur: 18,
+                        spread: 0,
+                        color: Color32::from_black_alpha(18),
+                    })
+                    .show(ui, |ui| {
+                        ui.set_width(360.0);
+                        ui.horizontal(|ui| {
+                            ui.spacing_mut().item_spacing.x = 10.0;
+                            let (rect, _) =
+                                ui.allocate_exact_size(vec2(32.0, 40.0), Sense::hover());
+                            ui.painter().circle_filled(rect.center(), 15.0, tint);
+                            draw_icon(
+                                ui,
+                                Rect::from_center_size(rect.center(), vec2(17.0, 17.0)),
+                                if has_errors { Icon::Alert } else { Icon::Check },
+                                color,
+                            );
+                            ui.allocate_ui_with_layout(
+                                vec2(190.0, 40.0),
+                                Layout::top_down(Align::LEFT),
+                                |ui| {
+                                    ui.spacing_mut().item_spacing.y = 3.0;
+                                    ui.add(
+                                        Label::new(RichText::new(&title).size(14.0).strong())
+                                            .truncate(),
+                                    );
+                                    ui.label(
+                                        RichText::new(format!(
+                                            "{} 个文件 · {}",
+                                            self.stats.files,
+                                            size(self.stats.bytes)
+                                        ))
+                                        .size(12.0)
+                                        .color(SUB),
+                                    );
+                                },
+                            );
+                            let details_response = ui.add(
+                                Button::new(RichText::new("详情 ↗").size(12.0).color(ACCENT))
+                                    .frame(false)
+                                    .min_size(vec2(43.0, 32.0)),
+                            );
+                            details = details_response.clicked();
+                            focused |= details_response.has_focus();
+                            let close_response = ui
+                                .add(
+                                    Button::new(RichText::new("×").size(19.0).color(SUB))
+                                        .frame(false)
+                                        .min_size(vec2(25.0, 30.0)),
+                                )
+                                .on_hover_text("收起完成提示");
+                            close_response.widget_info(|| {
+                                WidgetInfo::labeled(WidgetType::Button, true, "收起完成提示")
+                            });
+                            close = close_response.clicked();
+                            close_had_focus = close_response.has_focus();
+                            focused |= close_had_focus;
+                        });
+                    });
+            });
+        let now = Instant::now();
+        let interacting = area.response.contains_pointer() || focused;
+        if let Some(completion) = &mut self.completion {
+            if completion.update(now, interacting) {
+                ctx.request_repaint_after(completion.expires_at.saturating_duration_since(now));
+            } else {
+                self.completion = None;
+                ctx.request_repaint();
+            }
+        }
+        if details {
+            self.open_scan_details();
+            self.completion = None;
+        } else if close {
+            self.completion = None;
+            if close_had_focus && let Some(id) = self.details_button_id {
+                ctx.memory_mut(|memory| memory.request_focus(id));
+            }
+        }
     }
     fn dialogs(&mut self, ctx: &Context) {
         if self.detail_open
@@ -1151,6 +1673,36 @@ impl App {
             .default_width(600.0)
             .default_height(350.0)
             .show(ctx, |ui| {
+                ui.label(
+                    RichText::new(if self.stats.stopped {
+                        "已停止"
+                    } else if self.stats.complete {
+                        "扫描完成"
+                    } else if self.active {
+                        "正在扫描"
+                    } else {
+                        "扫描中断"
+                    })
+                    .size(16.0)
+                    .strong(),
+                );
+                ui.add_space(8.0);
+                Grid::new("scan_summary")
+                    .num_columns(2)
+                    .spacing(vec2(24.0, 8.0))
+                    .show(ui, |ui| {
+                        for (label, value) in [
+                            ("文件", self.stats.files.to_string()),
+                            ("目录", self.stats.folders.to_string()),
+                            ("实际占用", size(self.stats.bytes)),
+                            ("扫描用时", format!("{:.1} 秒", self.stats.seconds)),
+                        ] {
+                            ui.label(RichText::new(label).color(SUB));
+                            ui.label(value);
+                            ui.end_row();
+                        }
+                    });
+                ui.add_space(16.0);
                 ui.label(format!(
                     "读取失败 {} · 跳过目录链接 {} · 估算占用 {} · 已去重硬链接 {}",
                     self.stats.errors,
@@ -1172,10 +1724,15 @@ impl App {
                 });
             });
     }
-}
-impl eframe::App for App {
-    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+    fn show(&mut self, ctx: &Context) {
         self.poll(ctx);
+        if !self.detail_open
+            && !self.issues_open
+            && self.notice.is_none()
+            && ctx.input_mut(|input| input.consume_key(Modifiers::ALT, Key::ArrowLeft))
+        {
+            self.go_up();
+        }
         TopBottomPanel::top("top")
             .frame(
                 Frame::new()
@@ -1237,7 +1794,13 @@ impl eframe::App for App {
                     });
                 }
             });
+        self.completion_feedback(ctx);
         self.dialogs(ctx);
+    }
+}
+impl eframe::App for App {
+    fn update(&mut self, ctx: &Context, _frame: &mut eframe::Frame) {
+        self.show(ctx);
     }
     fn on_exit(&mut self, _gl: Option<&eframe::glow::Context>) {
         self.save_preferences();
@@ -1263,5 +1826,212 @@ fn display_path(path: &std::path::Path) -> String {
         format!("\\\\{rest}")
     } else {
         value.strip_prefix("\\\\?\\").unwrap_or(&value).to_owned()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use eframe::egui::Event;
+
+    #[test]
+    fn completion_expires_after_six_seconds() {
+        let now = Instant::now();
+        let mut notice = CompletionNotice::new(now);
+        assert!(notice.update(now + Duration::from_millis(5999), false));
+        assert!(!notice.update(now + COMPLETION_DURATION, false));
+    }
+
+    #[test]
+    fn completion_keeps_six_seconds_after_interaction_ends() {
+        let now = Instant::now();
+        let mut notice = CompletionNotice::new(now);
+        let later = now + Duration::from_secs(60);
+        assert!(notice.update(later, true));
+        assert!(notice.update(later + Duration::from_secs(30), true));
+        let leave = later + Duration::from_secs(31);
+        assert!(notice.update(leave, false));
+        assert!(notice.update(leave + Duration::from_millis(5999), false));
+        assert!(!notice.update(leave + COMPLETION_DURATION, false));
+    }
+
+    fn render(ctx: &Context, app: &mut App, events: Vec<Event>) -> FullOutput {
+        let input = RawInput {
+            screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 760.0))),
+            events,
+            ..Default::default()
+        };
+        ctx.run(input, |ctx| app.show(ctx))
+    }
+
+    fn label_position(output: &FullOutput, label: &str) -> Pos2 {
+        output
+            .shapes
+            .iter()
+            .find_map(|shape| {
+                if let Shape::Text(text) = &shape.shape
+                    && text.galley.text() == label
+                {
+                    Some(text.pos + text.galley.rect.center().to_vec2())
+                } else {
+                    None
+                }
+            })
+            .unwrap_or_else(|| panic!("Missing label {label}"))
+    }
+
+    fn click_label(ctx: &Context, app: &mut App, label: &str) {
+        let output = render(ctx, app, vec![]);
+        let position = label_position(&output, label);
+        let _ = render(
+            ctx,
+            app,
+            vec![
+                Event::PointerMoved(position),
+                Event::PointerButton {
+                    pos: position,
+                    button: PointerButton::Primary,
+                    pressed: true,
+                    modifiers: Modifiers::NONE,
+                },
+            ],
+        );
+        let _ = render(
+            ctx,
+            app,
+            vec![Event::PointerButton {
+                pos: position,
+                button: PointerButton::Primary,
+                pressed: false,
+                modifiers: Modifiers::NONE,
+            }],
+        );
+    }
+
+    #[test]
+    fn completion_and_parent_navigation_work_through_real_ui() {
+        let root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("work")
+            .join(format!("ui-check-{}", std::process::id()));
+        let child = root.join("子目录");
+        std::fs::create_dir_all(&child).unwrap();
+        std::fs::write(child.join("文件.txt"), vec![7u8; 4096]).unwrap();
+        let ctx = Context::default();
+        let mut app = App::new(&ctx, None);
+        app.begin(root.clone());
+        let deadline = Instant::now() + Duration::from_secs(10);
+        while app.active {
+            app.poll(&ctx);
+            assert!(Instant::now() < deadline, "scan did not finish");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(app.stats.complete);
+        assert!(app.completion.is_some());
+        let node = app
+            .rows
+            .iter()
+            .find(|node| node.name == "子目录")
+            .unwrap()
+            .clone();
+        app.navigate(&node);
+        app.page = 3;
+        app.large = true;
+        click_label(&ctx, &mut app, "上一级");
+        assert_eq!(app.current, 1);
+        assert_eq!(app.page, 0);
+        assert!(!app.large);
+        assert_eq!(app.current_node.as_ref().unwrap().id, 1);
+        click_label(&ctx, &mut app, "上一级");
+        assert_eq!(app.current, 1);
+        app.navigate(&node);
+        let _ = render(
+            &ctx,
+            &mut app,
+            vec![Event::Key {
+                key: Key::ArrowLeft,
+                physical_key: None,
+                pressed: true,
+                repeat: false,
+                modifiers: Modifiers::ALT,
+            }],
+        );
+        assert_eq!(app.current, 1);
+
+        let focus_id = Id::new("completion-focus-test");
+        let mut value = String::new();
+        let mut frame = |ctx: &Context, app: &mut App| {
+            ctx.run(
+                RawInput {
+                    screen_rect: Some(Rect::from_min_size(Pos2::ZERO, vec2(1100.0, 760.0))),
+                    ..Default::default()
+                },
+                |ctx| {
+                    Area::new(Id::new("test-input"))
+                        .fixed_pos(pos2(5.0, 5.0))
+                        .show(ctx, |ui| {
+                            ui.add(TextEdit::singleline(&mut value).id(focus_id));
+                        });
+                    app.show(ctx);
+                },
+            )
+        };
+        let _ = frame(&ctx, &mut app);
+        ctx.memory_mut(|memory| memory.request_focus(focus_id));
+        app.handle_event(scan::Event::Finished(
+            Stats {
+                complete: true,
+                errors: 1,
+                files: 1,
+                bytes: 4096,
+                ..Default::default()
+            },
+            None,
+        ));
+        let output = frame(&ctx, &mut app);
+        assert_eq!(ctx.memory(|memory| memory.focused()), Some(focus_id));
+        label_position(&output, "扫描完成，1 项未读取");
+        app.completion.as_mut().unwrap().expires_at = Instant::now() - Duration::from_secs(1);
+        let _ = render(&ctx, &mut app, vec![Event::PointerGone]);
+        assert!(app.completion.is_none());
+        assert!(app.stats.complete);
+        click_label(&ctx, &mut app, "1 项未读取");
+        assert!(app.issues_open);
+        app.issues_open = false;
+        app.handle_event(scan::Event::Finished(
+            Stats {
+                stopped: true,
+                ..Default::default()
+            },
+            None,
+        ));
+        assert!(app.completion.is_none());
+        app.handle_event(scan::Event::Finished(
+            Stats::default(),
+            Some("read failed".into()),
+        ));
+        assert!(app.completion.is_none());
+        app.notice = None;
+        app.handle_event(scan::Event::Finished(
+            Stats {
+                complete: true,
+                ..Default::default()
+            },
+            None,
+        ));
+        click_label(&ctx, &mut app, "重新扫描");
+        assert!(app.completion.is_none());
+        while app.active {
+            app.poll(&ctx);
+            assert!(Instant::now() < deadline, "rescan did not finish");
+            std::thread::sleep(Duration::from_millis(2));
+        }
+        assert!(app.completion.is_some());
+
+        let index_path = app.job.as_ref().unwrap().path.clone();
+        drop(app);
+        std::fs::remove_dir_all(&root).unwrap();
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", index_path.display()));
+        }
     }
 }

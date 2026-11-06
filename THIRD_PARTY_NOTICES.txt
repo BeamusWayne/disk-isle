@@ -1,4 +1,4 @@
-Third-party notices for Disk Isle 0.1.0
+Third-party notices for Disk Isle 0.2.0
 
 ========================================================================
 ab_glyph 0.2.32
