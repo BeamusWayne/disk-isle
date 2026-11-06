@@ -1,5 +1,7 @@
 # 盘屿 Disk Isle
 
+项目工作目录为 D:\Project\disk-isle。当前便携版归档保存在 releases/0.1.0，界面改版交互稿位于 design/scan-feedback.html，设计说明位于 design/scan-feedback.md。
+
 Windows 10 / 11 64 位便携版。解压 ZIP，双击 DiskIsle.exe 即可运行。
 
 此首版构建尚未数字签名，已在本机 Windows 11 验证运行。

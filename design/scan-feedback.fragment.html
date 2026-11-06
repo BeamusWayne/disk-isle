@@ -1,0 +1,654 @@
+<div id="disk-isle-feedback" lang="zh-CN" aria-label="盘屿 Windows 磁盘空间分析设计稿">
+  <header class="di-titlebar">
+    <div class="di-brand"><span class="di-logo" aria-hidden="true"><b></b></span>盘屿</div>
+    <nav class="di-nav" aria-label="视图">
+      <button type="button" data-tab="map"><i data-lucide="chart-pie"></i><span>空间总览</span></button>
+      <button type="button" data-tab="files"><i data-lucide="list-ordered"></i><span>大文件</span></button>
+    </nav>
+    <button type="button" id="di-pick-folder" class="di-folder-action" data-tooltip="选择要扫描的文件夹" aria-label="选择文件夹"><i data-lucide="folder-open"></i><span>选择文件夹</span></button>
+    <div id="di-folder-menu" class="di-pop" hidden></div>
+  </header>
+  <main>
+    <section class="di-head" aria-label="当前磁盘">
+      <div class="di-drive-block">
+        <div class="di-drive-art" aria-hidden="true"><b></b><b></b><em></em></div>
+        <div class="di-drive-text">
+          <button type="button" id="di-drive-button" class="di-drive-button" aria-expanded="false" aria-label="选择磁盘"><strong id="di-drive-name">工作磁盘</strong><i data-lucide="chevron-down"></i></button>
+          <div id="di-meta" class="di-meta"></div>
+        </div>
+        <div id="di-drives" class="di-pop" hidden></div>
+      </div>
+      <div class="di-capacity"><div class="di-cap-label"><span>已用 <b id="di-used"></b></span><span id="di-cap"></span></div><div class="di-cap-bar" id="di-meter"></div></div>
+      <button type="button" id="di-scan" class="di-scan" aria-label="重新扫描"><i data-lucide="rotate-cw"></i><span>重新扫描</span></button>
+    </section>
+    <div id="di-overview" class="di-overview" data-layout="grid">
+      <div class="di-layoutbar">
+        <div class="di-location"><button type="button" id="di-up" class="di-back" aria-label="返回上一层" data-tooltip="返回上一层"><i data-lucide="arrow-left"></i><span>上一级</span></button><div id="di-crumbs" aria-label="当前路径"></div></div>
+        <div class="di-layout-picker" role="group" aria-label="显示模式">
+          <button type="button" data-layout="grid" aria-label="网格模式" data-tooltip="网格模式"><i data-lucide="panels-top-left"></i><span>网格</span></button>
+          <button type="button" data-layout="ring" aria-label="环形模式" data-tooltip="环形模式"><i data-lucide="chart-pie"></i><span>环形</span></button>
+          <button type="button" data-layout="both" aria-label="对比模式" data-tooltip="对比模式"><i data-lucide="columns-2"></i><span>对比</span></button>
+        </div>
+      </div>
+      <section class="di-map di-ring-pane" aria-label="环形图">
+        <div class="di-map-head"><h2>环形图</h2></div>
+        <div class="di-plot">
+          <svg class="di-sun" viewBox="0 0 360 360" role="img" aria-label="按实际占用绘制的目录分层环图"></svg>
+          <div class="di-center"><span id="di-center-label"></span><strong id="di-center-value"></strong><span class="di-unit" id="di-center-unit">GB</span></div>
+        </div>
+      </section>
+      <section class="di-map di-grid-pane" aria-label="矩形网格">
+        <div class="di-map-head"><h2>矩形网格</h2></div>
+        <div class="di-grid-wrap"><div id="di-mosaic" aria-label="按实际占用面积显示当前目录"></div></div>
+      </section>
+      <div id="di-legend" aria-label="对应目录"></div>
+      <section class="di-directory" aria-label="当前目录内容">
+        <div class="di-section-head"><h2>目录占用</h2><button type="button" id="di-sort" class="di-order" data-tooltip="切换大小排序" aria-label="按大小降序，点击切换"><span id="di-sort-text">从大到小</span><i data-lucide="arrow-down-wide-narrow"></i></button></div>
+        <div id="di-rows"></div>
+      </section>
+    </div>
+    <section id="di-files" hidden>
+      <div class="di-section-head"><h2>大文件</h2><span id="di-file-count" class="di-quiet"></span></div>
+      <div id="di-file-rows"></div>
+      <div id="di-pager"></div>
+    </section>
+  </main>
+  <footer class="di-foot">
+    <div class="di-status"><span class="di-status-icon" aria-hidden="true"></span><span id="di-status" role="status" aria-live="polite">扫描完成</span><span id="di-count" class="di-foot-meta"></span></div>
+    <div id="di-transport"></div>
+    <button type="button" id="di-summary-button" class="di-summary-button"><i data-lucide="chart-no-axes-combined"></i><span>扫描详情</span></button>
+    <div class="di-mode-wrap"><button type="button" id="di-mode" class="di-mode" aria-expanded="false"><i data-lucide="leaf"></i><span id="di-mode-name">轻载优先</span><i data-lucide="chevron-up"></i></button><div id="di-modes" class="di-pop" hidden></div></div>
+  </footer>
+  <div id="di-toast" class="di-toast" role="status" aria-live="polite" aria-atomic="true">
+    <span id="di-toast-icon" class="di-toast-icon"><i data-lucide="check"></i></span>
+    <span class="di-toast-body"><strong id="di-toast-title">扫描完成</strong><span id="di-toast-caption"></span></span>
+    <button type="button" class="di-toast-details" id="di-toast-details">详情<i data-lucide="arrow-up-right"></i></button>
+    <button type="button" class="di-toast-close" id="di-toast-close" aria-label="收起完成提示" data-tooltip="收起"><i data-lucide="x"></i></button>
+  </div>
+  <div class="di-modal" id="di-summary-modal" hidden>
+    <section role="dialog" aria-modal="true" aria-labelledby="di-summary-title">
+      <div class="di-section-head"><h2 id="di-summary-title">扫描详情</h2><button type="button" class="di-icon" id="di-summary-close" aria-label="关闭扫描详情"><i data-lucide="x"></i></button></div>
+      <div class="di-summary-stats" id="di-summary-stats"></div>
+      <div id="di-summary-issues"></div>
+    </section>
+  </div>
+  <div class="di-modal" id="di-modal" hidden><section aria-label="文件详情" role="dialog" aria-modal="true"><div class="di-section-head"><span class="di-quiet">文件详情</span><button type="button" class="di-icon" id="di-close" aria-label="关闭详情"><i data-lucide="x"></i></button></div><div id="di-file-detail"></div><button type="button" class="di-detail-action" id="di-locate"><i data-lucide="folder-open"></i>查看所在目录</button></section></div>
+</div>
+<style>
+#disk-isle-feedback{--paper:light-dark(#fbfaf7,#262b2b);--panel:light-dark(#f3f3ee,#2c3332);--sheet:light-dark(#fdfcf9,#313736);--soft:light-dark(#edeee9,#383e3b);--rule:light-dark(#dddfd8,#454b46);--ink:light-dark(#35413e,#d1d8d3);--sub:light-dark(#626e66,#afb9b1);--mut:light-dark(#727b73,#a4afa6);--mint:light-dark(#e0e9df,#37473f);--accent:light-dark(#52715e,#a9c3ab);--pattern:light-dark(#cdd3c8,#46504a);--groove:light-dark(#f5f5f0,#2e3532);--c0:light-dark(#87ab99,#789c87);--c1:light-dark(#91aabd,#8298ac);--c2:light-dark(#c5a38c,#b39884);--c3:light-dark(#a69cb6,#9d92ac);--c4:light-dark(#c3b783,#b0a578);--c5:light-dark(#a7b2b0,#92a29d);position:relative;isolation:isolate;container:di / inline-size;box-sizing:border-box;width:100%;min-width:0;background:var(--paper);color:var(--ink);border:1px solid var(--rule);border-radius:15px;overflow:clip;font:14px/1.45 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;text-align:left;letter-spacing:0;color-scheme:inherit}
+#disk-isle-feedback *,#disk-isle-feedback *::after,#disk-isle-feedback *::before{box-sizing:border-box}
+#disk-isle-feedback [hidden]{display:none!important}
+#disk-isle-feedback button{font:inherit;color:inherit;line-height:inherit;letter-spacing:inherit;border:0;background:transparent;cursor:pointer;border-radius:7px;margin:0;box-shadow:none}
+#disk-isle-feedback button:hover:not(:disabled){background:var(--soft)}
+#disk-isle-feedback button:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#disk-isle-feedback button:disabled{opacity:.36;cursor:default}
+#disk-isle-feedback i[data-lucide],#disk-isle-feedback svg.lucide{display:inline-block;flex:0 0 auto;width:17px;height:17px;stroke-width:1.65;vertical-align:middle}
+#disk-isle-feedback h2{margin:0;color:var(--ink);font:600 16px/1.45 "Segoe UI","Microsoft YaHei UI","Microsoft YaHei",sans-serif;letter-spacing:.02em}
+#disk-isle-feedback .di-titlebar{display:flex;align-items:center;position:relative;justify-content:space-between;min-height:55px;padding:0 23px;border-bottom:1px solid var(--rule);background:var(--sheet)}
+#disk-isle-feedback .di-brand{display:flex;align-items:center;gap:9px;font-size:17px;font-weight:620;letter-spacing:.07em}
+#disk-isle-feedback .di-logo{position:relative;isolation:isolate;overflow:hidden;display:block;width:27px;height:27px;border-radius:8px;background:var(--accent)}
+#disk-isle-feedback .di-logo b,#disk-isle-feedback .di-logo:before,#disk-isle-feedback .di-logo:after{position:absolute;content:"";display:block;border:1.7px solid var(--mint);border-radius:50% 42% 48% 43%;transform:rotate(-32deg)}
+#disk-isle-feedback .di-logo:before{width:35px;height:25px;left:-3px;top:4px}#disk-isle-feedback .di-logo:after{width:23px;height:16px;left:3px;top:8px}#disk-isle-feedback .di-logo b{width:11px;height:7px;left:9px;top:13px}
+#disk-isle-feedback .di-nav{display:flex;gap:2px;padding:3px;background:var(--soft);border-radius:10px}
+#disk-isle-feedback .di-nav button{display:flex;align-items:center;justify-content:center;gap:7px;padding:5px 13px;font-size:12px;color:var(--sub)}
+#disk-isle-feedback .di-nav button[aria-pressed=true]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 3px #23302416}
+#disk-isle-feedback .di-nav svg.lucide{width:15px;height:15px}
+#disk-isle-feedback .di-chrome{display:flex;align-items:center;justify-content:flex-end;gap:21px;width:78px;opacity:.68}
+#disk-isle-feedback .di-chrome b{display:inline-block;position:relative;width:10px;height:10px}
+#disk-isle-feedback .di-chrome b:first-child{height:1px;background:var(--sub)}#disk-isle-feedback .di-chrome b:nth-child(2){border:1px solid var(--sub);border-radius:2px}#disk-isle-feedback .di-chrome b:last-child:before,#disk-isle-feedback .di-chrome b:last-child:after{position:absolute;content:"";left:4px;width:1px;height:12px;background:var(--sub);transform:rotate(45deg)}#disk-isle-feedback .di-chrome b:last-child:after{transform:rotate(-45deg)}
+#disk-isle-feedback main{display:block;padding:0 clamp(16px,3.7cqw,42px) 25px}
+#disk-isle-feedback .di-head{display:flex;align-items:center;gap:16px;padding:27px 0 24px}
+#disk-isle-feedback .di-drive-block{display:flex;align-items:center;gap:14px;position:relative;margin-right:auto}
+#disk-isle-feedback .di-drive-art{position:relative;isolation:isolate;width:51px;height:51px;border-radius:14px;background:var(--mint);overflow:hidden;flex:none}
+#disk-isle-feedback .di-drive-art b{position:absolute;left:10px;top:13px;width:32px;height:22px;transform:skewY(-12deg) rotate(-7deg);border-radius:4px;background:linear-gradient(155deg,color-mix(in srgb,var(--accent) 46%,var(--mint)),var(--accent));box-shadow:0 4px 0 color-mix(in srgb,var(--accent) 78%,var(--ink))}
+#disk-isle-feedback .di-drive-art b:nth-child(2){top:16px;left:13px;width:21px;height:2px;border-radius:2px;box-shadow:none;background:color-mix(in srgb,var(--mint) 85%,var(--accent))}
+#disk-isle-feedback .di-drive-art em{position:absolute;left:34px;top:31px;width:4px;height:2px;background:var(--mint);border-radius:2px;transform:rotate(-16deg)}
+#disk-isle-feedback .di-drive-button{display:flex;gap:8px;padding:0 4px 0 0;align-items:center}
+#disk-isle-feedback .di-drive-button strong{font-size:clamp(22px,2.8cqw,29px);font-weight:600;line-height:1.25;letter-spacing:.015em}
+#disk-isle-feedback .di-drive-button svg{width:15px;color:var(--sub)}
+#disk-isle-feedback .di-meta,#disk-isle-feedback .di-quiet,#disk-isle-feedback .di-foot-meta{color:var(--sub);font-size:12px}
+#disk-isle-feedback .di-meta{display:flex;align-items:center;gap:9px;margin-top:5px;letter-spacing:.045em}
+#disk-isle-feedback .di-meta b{width:2px;height:2px;background:var(--mut);border-radius:100%}
+#disk-isle-feedback .di-capacity{width:clamp(140px,23cqw,230px);padding:0 4px}
+#disk-isle-feedback .di-cap-label{display:flex;justify-content:space-between;gap:10px;color:var(--sub);font-size:12px;margin-bottom:8px;white-space:nowrap;font-variant-numeric:tabular-nums}
+#disk-isle-feedback .di-cap-label b{font-weight:550;color:var(--ink)}
+#disk-isle-feedback .di-cap-bar{height:6px;border-radius:8px;background:var(--soft);display:flex;align-items:stretch;overflow:hidden}
+#disk-isle-feedback .di-cap-bar b{display:block;height:100%}
+#disk-isle-feedback .di-icon{width:33px;height:33px;display:inline-flex;align-items:center;justify-content:center;flex:none;color:var(--sub);padding:0}
+#disk-isle-feedback .di-scan{width:39px;height:39px;border:1px solid var(--rule);border-radius:11px;background:var(--sheet);color:var(--accent)}
+#disk-isle-feedback .di-overview{display:grid;grid-template-columns:minmax(0,1.16fr) minmax(0,.9fr);gap:clamp(21px,3.6cqw,42px);align-items:stretch}
+#disk-isle-feedback .di-map{position:relative;display:flex;flex-direction:column;min-width:0;border:1px solid var(--rule);border-radius:15px;background:var(--panel);overflow:hidden}
+#disk-isle-feedback .di-map:before{content:"";position:absolute;inset:0;pointer-events:none;background-image:radial-gradient(var(--pattern) .7px,transparent .95px);background-size:12px 12px;opacity:.54;mask-image:linear-gradient(145deg,transparent 3%,black 55%,transparent 103%)}
+#disk-isle-feedback .di-map-head,#disk-isle-feedback .di-map-foot{position:relative;display:flex;align-items:center;justify-content:space-between;gap:7px;min-height:37px}
+#disk-isle-feedback .di-map-head{padding:13px 18px 0}
+#disk-isle-feedback .di-plot{position:relative;display:grid;place-items:center;width:100%;flex:1;min-height:0}
+#disk-isle-feedback .di-sun{display:block;width:min(91%,355px);height:auto;max-width:100%;aspect-ratio:1/1;overflow:visible}
+#disk-isle-feedback .di-sun path{cursor:pointer;transition:filter .12s ease}
+#disk-isle-feedback .di-sun path:hover{filter:brightness(.94) saturate(1.15)}
+#disk-isle-feedback .di-center{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column;pointer-events:none;color:var(--sub);font-size:12px}
+#disk-isle-feedback .di-center strong{font:500 clamp(28px,4.2cqw,45px)/1.12 "Segoe UI Variable Display","Segoe UI",sans-serif;letter-spacing:-.052em;color:var(--ink);font-variant-numeric:tabular-nums}
+#disk-isle-feedback .di-center .di-unit{font-size:11px;letter-spacing:.12em;margin-top:2px}
+#disk-isle-feedback .di-map-foot{padding:0 19px 12px}
+#disk-isle-feedback #di-crumbs{display:flex;align-items:center;gap:3px;flex-wrap:wrap;min-width:0}
+#disk-isle-feedback #di-crumbs button{padding:2px 4px;font-size:12px;color:var(--sub);overflow-wrap:anywhere}
+#disk-isle-feedback #di-crumbs svg{width:13px;height:13px;color:var(--sub)}
+#disk-isle-feedback .di-depth{display:flex;gap:3px;align-items:flex-end}
+#disk-isle-feedback .di-depth b{width:4px;height:7px;border-radius:1px;background:var(--c0)}#disk-isle-feedback .di-depth b:nth-child(2){height:10px;opacity:.72}#disk-isle-feedback .di-depth b:nth-child(3){height:13px;opacity:.48}
+#disk-isle-feedback .di-directory{min-width:0;display:flex;flex-direction:column}
+#disk-isle-feedback .di-section-head{display:flex;justify-content:space-between;align-items:center;gap:7px;min-height:40px}
+#disk-isle-feedback .di-directory>.di-section-head{margin:0 0 5px;padding:0 3px 7px;border-bottom:1px solid var(--rule)}
+#disk-isle-feedback .di-order,#disk-isle-feedback .di-mode,#disk-isle-feedback .di-detail-action{display:inline-flex;align-items:center;gap:6px;padding:5px 6px;font-size:12px;color:var(--sub)}
+#disk-isle-feedback .di-order svg{width:15px;height:15px}
+#disk-isle-feedback .di-row{width:100%;display:grid;grid-template-columns:36px minmax(0,1fr) auto 12px;gap:11px;align-items:center;text-align:left;min-height:57px;padding:7px 4px;border-radius:6px}
+#disk-isle-feedback .di-row+.di-row{border-top:1px solid color-mix(in srgb,var(--rule) 64%, transparent);border-top-left-radius:0;border-top-right-radius:0}
+#disk-isle-feedback .di-file-icon{width:34px;height:34px;border-radius:9px;background:color-mix(in srgb,var(--node) 19%,var(--paper));color:color-mix(in srgb,var(--node) 62%,var(--ink));display:grid;place-items:center}
+#disk-isle-feedback .di-file-icon svg{width:18px;height:18px}
+#disk-isle-feedback .di-namecol{display:flex;flex-direction:column;align-items:flex-start;gap:7px;min-width:0}
+#disk-isle-feedback .di-name{display:block;max-width:100%;font-size:14px;font-weight:550;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#disk-isle-feedback .di-trackbar{width:min(100%,110px);height:3px;border-radius:4px;background:var(--soft);overflow:hidden}
+#disk-isle-feedback .di-trackbar i{display:block;height:3px;border-radius:4px;background:var(--node)}
+#disk-isle-feedback .di-readout{font-size:14px;font-weight:520;white-space:nowrap;font-variant-numeric:tabular-nums}
+#disk-isle-feedback .di-readout small{font-size:11px;font-weight:400;color:var(--sub);margin-left:3px}
+#disk-isle-feedback .di-row>.lucide{width:12px;height:12px;color:var(--mut)}
+#disk-isle-feedback .di-path{max-width:100%;overflow:hidden;text-overflow:ellipsis;color:var(--sub);font-size:12px;white-space:nowrap}
+#disk-isle-feedback #di-files{min-height:385px}
+#disk-isle-feedback #di-files>.di-section-head{border-bottom:1px solid var(--rule);margin-bottom:5px}
+#disk-isle-feedback #di-file-rows .di-row{grid-template-columns:36px minmax(0,1fr) auto 12px}
+#disk-isle-feedback #di-file-rows .di-namecol{gap:1px}
+#disk-isle-feedback #di-pager{display:flex;align-items:center;justify-content:flex-end;gap:10px;font-size:12px;color:var(--sub)}
+#disk-isle-feedback .di-foot{display:flex;align-items:center;gap:10px;min-height:43px;border-top:1px solid var(--rule);padding:4px clamp(16px,3.7cqw,42px);background:var(--sheet);font-size:12px;color:var(--sub)}
+#disk-isle-feedback .di-status{display:flex;align-items:center;gap:8px;min-width:0}
+#disk-isle-feedback .di-dot{width:6px;height:6px;background:var(--c0);border-radius:50%;flex:none}
+#disk-isle-feedback .di-foot-meta{padding-left:9px;border-left:1px solid var(--rule)}
+#disk-isle-feedback .di-mode-wrap{position:relative;margin-left:auto}
+#disk-isle-feedback .di-mode{color:var(--accent);white-space:nowrap}
+#disk-isle-feedback .di-mode svg{width:14px;height:14px}
+#disk-isle-feedback .di-mode svg:last-child{width:12px}
+#disk-isle-feedback #di-transport{display:flex;gap:4px}
+#disk-isle-feedback #di-transport .di-icon{width:28px;height:28px;background:var(--soft)}#disk-isle-feedback #di-transport svg{width:13px;height:13px}
+#disk-isle-feedback .di-pop{position:absolute;z-index:5;background:var(--sheet);border:1px solid var(--rule);border-radius:12px;padding:5px;min-width:190px;box-shadow:0 8px 20px #25362318}
+#disk-isle-feedback #di-drives{top:calc(100% + 6px);left:0}#disk-isle-feedback #di-modes{bottom:calc(100% + 6px);right:0}
+#disk-isle-feedback .di-pop button{width:100%;display:flex;align-items:center;gap:9px;text-align:left;padding:9px;font-size:13px}
+#disk-isle-feedback .di-pop button[aria-pressed=true]{background:var(--mint)}
+#disk-isle-feedback .di-pop button small{margin-left:auto;color:var(--sub)}
+#disk-isle-feedback .di-modal{position:absolute;z-index:7;inset:0;display:grid;align-items:center;justify-items:center;background:color-mix(in srgb,var(--ink) 18%,transparent);padding:14px}
+#disk-isle-feedback .di-modal section{width:min(345px,100%);padding:15px 20px 20px;background:var(--sheet);border:1px solid var(--rule);border-radius:16px;box-shadow:0 12px 36px #2134271a}
+#disk-isle-feedback .di-modal h3{font-size:19px;margin:12px 0 6px;overflow-wrap:anywhere;color:var(--ink)}
+#disk-isle-feedback .di-detail-path{font-size:12px;overflow-wrap:anywhere;color:var(--sub);margin-bottom:15px}
+#disk-isle-feedback .di-modal .di-file-icon{width:42px;height:42px;margin-top:3px}
+#disk-isle-feedback .di-detail-action{margin-top:18px;background:var(--mint);color:var(--accent);padding:7px 10px}
+#disk-isle-feedback .di-empty{padding:30px 0;text-align:center;color:var(--sub);font-size:13px}
+@container di (max-width:700px){#disk-isle-feedback .di-overview{grid-template-columns:minmax(0,1fr) minmax(0,.95fr);gap:15px}#disk-isle-feedback .di-row{gap:7px;grid-template-columns:30px minmax(0,1fr) auto 9px;min-height:51px}#disk-isle-feedback .di-file-icon{width:29px;height:29px}#disk-isle-feedback .di-name{font-size:13px}#disk-isle-feedback .di-sun{width:99%}#disk-isle-feedback .di-capacity{width:150px}}
+@container di (max-width:555px){#disk-isle-feedback .di-titlebar{padding:0 16px}#disk-isle-feedback .di-chrome{display:none}#disk-isle-feedback .di-head{gap:8px;padding:18px 0;flex-wrap:wrap}#disk-isle-feedback .di-capacity{order:3;width:100%;padding:2px 0 0}#disk-isle-feedback .di-cap-label{margin-bottom:4px}#disk-isle-feedback .di-overview{display:flex;flex-direction:column;gap:16px}#disk-isle-feedback .di-map-head{padding-top:8px}#disk-isle-feedback .di-sun{width:min(78%,255px)}#disk-isle-feedback .di-center strong{font-size:29px}#disk-isle-feedback .di-center{font-size:11px}#disk-isle-feedback .di-row{min-height:46px}#disk-isle-feedback .di-foot{flex-wrap:wrap;gap:2px 6px}#disk-isle-feedback .di-foot-meta{font-size:11px;padding-left:5px}#disk-isle-feedback .di-plot{min-height:205px}#disk-isle-feedback .di-nav button{padding:5px 9px}#disk-isle-feedback .di-brand{font-size:15px}#disk-isle-feedback .di-depth{display:none}}
+@media(prefers-reduced-motion:reduce){#disk-isle-feedback *{transition:none!important}}
+#disk-isle-feedback .di-head{padding-bottom:17px}
+#disk-isle-feedback .di-overview{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px 16px}
+#disk-isle-feedback .di-layoutbar{grid-column:1/-1;display:flex;align-items:center;justify-content:space-between;gap:12px;padding:9px 0 0;border-top:1px solid var(--rule)}
+#disk-isle-feedback .di-location,#disk-isle-feedback .di-layout-picker{display:flex;align-items:center;gap:3px;min-width:0}
+#disk-isle-feedback .di-location .di-icon{width:26px;height:26px;margin-right:3px}
+#disk-isle-feedback .di-layout-picker{background:var(--soft);padding:3px;border-radius:9px;flex:none}
+#disk-isle-feedback .di-layout-picker button{display:flex;align-items:center;gap:5px;font-size:12px;padding:4px 9px;color:var(--sub)}
+#disk-isle-feedback .di-layout-picker button[aria-pressed=true]{background:var(--sheet);color:var(--ink);box-shadow:0 1px 3px #23302412}
+#disk-isle-feedback .di-layout-picker svg{height:14px;width:14px}
+#disk-isle-feedback .di-overview[data-layout=both] .di-directory,#disk-isle-feedback .di-overview[data-layout=grid] .di-ring-pane,#disk-isle-feedback .di-overview[data-layout=ring] .di-grid-pane,#disk-isle-feedback .di-overview:not([data-layout=both]) #di-legend{display:none}
+#disk-isle-feedback .di-map-head{padding:14px 17px 0;min-height:34px}
+#disk-isle-feedback .di-map-head h2{font-size:15px}
+#disk-isle-feedback .di-ring-pane,#disk-isle-feedback .di-grid-pane{height:clamp(291px,37cqw,365px)}
+#disk-isle-feedback .di-plot{padding:6px 8px 12px}
+#disk-isle-feedback .di-sun{width:auto;height:100%;max-height:100%;position:absolute;inset:0;margin:auto}
+#disk-isle-feedback .di-center strong{font-size:clamp(27px,3.7cqw,38px)}
+#disk-isle-feedback .di-grid-pane{background:var(--panel)}
+#disk-isle-feedback .di-grid-pane:before{display:none}
+#disk-isle-feedback .di-grid-wrap{min-height:0;flex:1;padding:12px 13px 14px}
+#disk-isle-feedback #di-mosaic{position:relative;width:100%;height:100%}
+#disk-isle-feedback .di-block{position:absolute;padding:0;overflow:hidden;background:transparent;border-radius:0;text-align:left}
+#disk-isle-feedback .di-block:hover:not(:disabled){background:transparent}
+#disk-isle-feedback .di-block-face{display:flex;flex-direction:column;position:absolute;inset:2px;border-radius:7px;padding:clamp(6px,1.2cqw,13px);overflow:hidden;background:var(--tile);color:var(--ink);justify-content:flex-end;align-items:flex-start}
+#disk-isle-feedback .di-block-face>svg{position:absolute;top:12px;left:12px;width:20px;height:20px;color:color-mix(in srgb,var(--ink) 72%,var(--node))}
+#disk-isle-feedback .di-block-name{font-size:clamp(12px,1.5cqw,16px);font-weight:550;width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#disk-isle-feedback .di-block-size{display:flex;align-items:baseline;gap:4px;font-size:clamp(13px,1.7cqw,18px);font-weight:450;font-variant-numeric:tabular-nums;white-space:nowrap}
+#disk-isle-feedback .di-block-size small{font-size:11px;font-weight:400}
+#disk-isle-feedback .di-block.is-small .di-block-face{padding:5px 7px;justify-content:center}
+#disk-isle-feedback .di-block.is-small .di-block-name,#disk-isle-feedback .di-block.is-small .di-block-size{font-size:12px}
+#disk-isle-feedback .di-block.is-narrow .di-block-face{justify-content:center;align-items:center;padding:3px}
+#disk-isle-feedback .di-block.is-narrow .di-block-name{width:auto;max-height:100%;writing-mode:vertical-rl;letter-spacing:.06em}
+#disk-isle-feedback #di-legend{grid-column:1/-1;display:grid;grid-template-columns:repeat(6,minmax(0,1fr));gap:4px}
+#disk-isle-feedback .di-key{display:flex;align-items:center;gap:8px;min-width:0;padding:6px 4px;text-align:left}
+#disk-isle-feedback .di-key b{width:8px;height:8px;border-radius:3px;background:var(--node);flex:none}
+#disk-isle-feedback .di-key span{min-width:0;display:flex;flex-direction:column;font-size:12px}
+#disk-isle-feedback .di-key em{font-style:normal;white-space:nowrap;text-overflow:ellipsis;overflow:hidden}
+#disk-isle-feedback .di-key small{font-variant-numeric:tabular-nums;font-size:11px;color:var(--sub)}
+#disk-isle-feedback .di-sun .di-faint{opacity:.44}#disk-isle-feedback .di-block.di-faint .di-block-face{opacity:.58}
+#disk-isle-feedback .di-key.di-linked{background:var(--soft)}
+#disk-isle-feedback .di-block.di-selected .di-block-face{box-shadow:inset 0 0 0 2px color-mix(in srgb,var(--accent) 70%,var(--tile))}
+#disk-isle-feedback .di-sun path.di-selected{stroke:var(--accent);stroke-width:2.5px}
+#disk-isle-feedback .di-row.di-selected{background:var(--mint)}
+@container di (max-width:730px){#disk-isle-feedback #di-legend{grid-template-columns:repeat(3,minmax(0,1fr))}#disk-isle-feedback .di-overview{column-gap:10px}}
+@container di (max-width:555px){#disk-isle-feedback .di-overview{display:grid;grid-template-columns:minmax(0,1fr);gap:12px}#disk-isle-feedback .di-ring-pane,#disk-isle-feedback .di-grid-pane{height:275px}#disk-isle-feedback .di-layoutbar{flex-wrap:wrap}#disk-isle-feedback .di-layout-picker{margin-left:auto}#disk-isle-feedback .di-layout-picker button{padding:5px 7px}#disk-isle-feedback .di-center strong{font-size:30px}}
+#disk-isle-feedback{--amber:light-dark(#927344,#d0b47a);--amber-fill:light-dark(#f2eadc,#454034)}
+#disk-isle-feedback .di-titlebar{min-height:60px}
+#disk-isle-feedback .di-folder-action{display:inline-flex;align-items:center;gap:7px;padding:8px 10px;color:var(--sub);font-size:12px}
+#disk-isle-feedback .di-folder-action svg{height:16px;width:16px}
+#disk-isle-feedback .di-drive-button{padding:5px 9px 5px 2px;border-radius:9px;gap:10px}
+#disk-isle-feedback .di-drive-button strong{font-size:clamp(22px,2.7cqw,27px)}
+#disk-isle-feedback .di-drive-button svg{width:16px;height:16px}
+#disk-isle-feedback .di-meta{padding-left:2px}
+#disk-isle-feedback .di-head{gap:20px}
+#disk-isle-feedback .di-scan{display:flex;align-items:center;justify-content:center;gap:8px;flex:none;width:auto;height:38px;padding:0 14px;border:1px solid color-mix(in srgb,var(--accent) 14%,var(--mint));border-radius:10px;background:var(--mint);font-size:13px;font-weight:550;white-space:nowrap;color:var(--accent)}
+#disk-isle-feedback .di-scan svg{height:16px;width:16px}
+#disk-isle-feedback .di-layout-picker{padding:3px;gap:2px}
+#disk-isle-feedback .di-layout-picker button{min-height:30px;gap:6px;padding:5px 11px;border-radius:7px}
+#disk-isle-feedback .di-layout-picker button svg{height:15px;width:15px}
+#disk-isle-feedback .di-back{height:34px;display:flex;align-items:center;gap:5px;padding:0 9px;margin-right:7px;border:1px solid var(--rule);background:var(--sheet);border-radius:8px;font-size:12px;white-space:nowrap;flex:none;color:var(--sub)}
+#disk-isle-feedback .di-back svg{width:15px;height:15px}
+#disk-isle-feedback .di-back:disabled{opacity:.48}
+#disk-isle-feedback .di-foot{min-height:46px}
+#disk-isle-feedback .di-status .lucide{width:15px;height:15px;color:var(--accent)}
+#disk-isle-feedback .di-status .di-dot{display:none}
+#disk-isle-feedback .di-summary-button{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--sub);padding:5px 7px;border-radius:7px;margin-left:auto;white-space:nowrap}
+#disk-isle-feedback .di-summary-button svg{width:14px;height:14px}
+#disk-isle-feedback .di-summary-button.has-issues{color:var(--amber);background:var(--amber-fill)}
+#disk-isle-feedback .di-mode-wrap{margin-left:4px}
+#disk-isle-feedback .di-mode{padding:6px 8px;border-radius:7px}
+#disk-isle-feedback #di-transport .di-icon{width:31px;height:31px;border:1px solid var(--rule);background:var(--sheet);border-radius:8px}
+#disk-isle-feedback .di-toast{position:absolute;z-index:4;right:26px;bottom:62px;display:flex;align-items:center;gap:11px;width:min(390px,calc(100% - 32px));min-height:74px;padding:13px 11px 13px 15px;border:1px solid color-mix(in srgb,var(--accent) 22%,var(--rule));border-radius:13px;background:var(--sheet);box-shadow:0 5px 24px #20352812,0 1px 5px #20352808}
+#disk-isle-feedback .di-toast-icon{display:grid;place-items:center;flex:none;width:31px;height:31px;border-radius:50%;background:var(--mint);color:var(--accent)}
+#disk-isle-feedback .di-toast-icon svg{width:17px;height:17px;stroke-width:2}
+#disk-isle-feedback .di-toast-body{display:flex;flex:1;min-width:0;flex-direction:column;gap:3px}
+#disk-isle-feedback .di-toast-body strong{font-size:14px;font-weight:550}
+#disk-isle-feedback .di-toast-body>span{font-size:11px;color:var(--sub);font-variant-numeric:tabular-nums;white-space:nowrap}
+#disk-isle-feedback .di-toast-details{display:flex;align-items:center;gap:3px;padding:7px 4px;color:var(--accent);font-size:12px}
+#disk-isle-feedback .di-toast-details svg{width:13px;height:13px}
+#disk-isle-feedback .di-toast-close{display:grid;place-items:center;width:26px;height:26px;align-self:flex-start;color:var(--sub);flex:none;padding:0}
+#disk-isle-feedback .di-toast-close svg{width:14px;height:14px}
+#disk-isle-feedback .di-toast.has-issues .di-toast-icon{color:var(--amber);background:var(--amber-fill)}
+#disk-isle-feedback #di-drives{min-width:244px;padding:7px;top:calc(100% + 9px)}
+#disk-isle-feedback #di-drives button{padding:10px;min-height:52px;border-radius:8px;gap:10px}
+#disk-isle-feedback .di-drive-option{display:flex;flex-direction:column;gap:3px}
+#disk-isle-feedback .di-drive-option>span{font-size:13px}
+#disk-isle-feedback .di-drive-option small{font-size:11px;margin:0}
+#disk-isle-feedback #di-drives .di-checkmark{margin-left:auto;color:var(--accent);width:15px}
+#disk-isle-feedback #di-drives button>.lucide:first-child{width:21px;height:21px;color:var(--sub)}
+#disk-isle-feedback .di-summary-stats{display:grid;grid-template-columns:auto auto;gap:12px 16px;margin-top:18px;font-size:13px}
+#disk-isle-feedback .di-summary-stats span:nth-child(odd){color:var(--sub)}
+#disk-isle-feedback .di-summary-stats span:nth-child(even){text-align:right;font-variant-numeric:tabular-nums}
+#disk-isle-feedback .di-issue-row{display:flex;align-items:flex-start;gap:8px;padding:12px 0 0;margin-top:15px;border-top:1px solid var(--rule);font-size:12px}
+#disk-isle-feedback .di-issue-row .lucide{width:15px;color:var(--amber)}
+#disk-isle-feedback .di-issue-row p{font-size:11px;color:var(--sub);margin:3px 0 0}
+#disk-isle-feedback.di-toast-style-bar .di-status{padding:3px 6px;border-radius:6px;background:var(--mint)}
+#disk-isle-feedback #di-folder-menu{right:20px;top:54px}
+@container di (max-width:700px){#disk-isle-feedback .di-head{gap:12px}#disk-isle-feedback .di-capacity{width:155px}#disk-isle-feedback .di-scan{padding:0 10px}}
+@container di (max-width:555px){#disk-isle-feedback .di-titlebar{flex-wrap:wrap;gap:8px;padding:12px 16px}#disk-isle-feedback .di-nav{order:3;justify-content:center;width:100%}#disk-isle-feedback .di-folder-action{margin-left:auto;padding:7px}#disk-isle-feedback .di-capacity{width:100%}#disk-isle-feedback .di-head{gap:10px}#disk-isle-feedback .di-drive-block{gap:9px}#disk-isle-feedback .di-drive-art{width:43px;height:43px}#disk-isle-feedback .di-drive-button strong{font-size:20px}#disk-isle-feedback .di-drive-button{gap:5px}#disk-isle-feedback .di-drive-button svg{width:12px}#disk-isle-feedback .di-scan{padding:0 8px;font-size:12px;gap:5px}#disk-isle-feedback .di-foot{gap:5px 7px;padding-top:8px;padding-bottom:8px}#disk-isle-feedback .di-status{width:100%}#disk-isle-feedback .di-summary-button{margin-left:0}#disk-isle-feedback .di-mode-wrap{margin-left:auto}#disk-isle-feedback .di-toast{bottom:89px;right:16px}#disk-isle-feedback .di-toast-body strong{font-size:13px}#disk-isle-feedback .di-toast-icon{width:25px;height:25px}#disk-isle-feedback .di-toast{gap:8px;padding-left:11px}#disk-isle-feedback .di-toast-body>span{font-size:11px}}
+</style>
+<script>
+(() => {
+  const root = document.getElementById('disk-isle-feedback');
+  const q = (selector) => root.querySelector(selector);
+  const ico = (name) => '<i aria-hidden="true" data-lucide="' + name + '"></i>';
+  const icons = () => { if (globalThis.lucide) lucide.createIcons({attrs:{width:16,height:16,'aria-hidden':'true'}}); };
+  const folder = (name, children, icon = 'folder') => ({name, children, icon});
+  const file = (name, units) => ({name, units});
+  const D = folder('D:', [
+    folder('影像素材', [
+      folder('海岸航拍', [file('东岸长镜头.mov',324),file('晨雾航拍.mov',238),file('海岸空镜.mov',158)]),
+      folder('城市纪录', [file('街角访问.mxf',246),file('夜景延时.mov',144),file('街景补拍.mov',105)]),
+      folder('棚拍原片', [file('春季样片.mov',183),file('产品特写.mxf',146)]),
+      file('剪辑代理包.zip',112)
+    ],'clapperboard'),
+    folder('设计项目', [
+      folder('品牌系统', [file('品牌资产库.zip',116),file('动态识别源文件.zip',147),file('交付素材包.zip',111)]),
+      folder('产品渲染', [file('场景资源库.blend',180),file('成片序列.exr.zip',146)]),
+      folder('展览视觉', [file('展厅投影.mov',161),file('屏幕素材.zip',99)])
+    ],'layers-3'),
+    folder('素材库', [
+      folder('三维模型', [file('建筑模型包.zip',135),file('植物模型包.zip',98)]),
+      folder('纹理贴图', [file('岩石扫描纹理.zip',126),file('木质贴图.zip',103)]),
+      file('光照环境合集.zip',150)
+    ],'library-big'),
+    folder('归档备份', [
+      folder('项目归档', [file('秋季项目.7z',182),file('夏季项目.7z',127)]),
+      file('工作区快照.vhdx',147)
+    ],'archive'),
+    folder('下载', [file('系统镜像.iso',136),folder('离线安装包',[file('设计工具套件.iso',100),file('声音素材.zip',44)]),file('课程视频.zip',44)],'arrow-down-to-line'),
+    folder('音频工程', [folder('现场录音',[file('四轨录音.wav',51),file('雨夜环境.wav',27)]),file('混音工程.zip',42)],'audio-lines')
+  ]);
+  const C = folder('C:', [
+    folder('Users',[folder('Studio',[folder('Videos',[file('访谈母版.mov',205),file('演示录屏.mp4',66)]),folder('Downloads',[file('镜像.iso',78),file('更新包.zip',45)])])],'users'),
+    folder('Windows',[folder('System32',[file('系统组件包.wim',122),file('驱动镜像.wim',68)]),folder('SoftwareDistribution',[file('功能更新包.esd',91)])],'monitor'),
+    folder('Program Files',[folder('Studio Tools',[file('渲染资源.pak',141),file('基础模型.bin',76)])],'box'),
+    folder('ProgramData',[folder('Cache',[file('索引缓存.bin',81),file('模型缓存.dat',44)])],'database'),
+    file('hiberfil.sys',72),file('pagefile.sys',46)
+  ]);
+  const disks = {D:{name:'工作磁盘',cap:10000,root:D},C:{name:'系统磁盘',cap:5120,root:C}};
+  const color = (index) => 'var(--c' + (index % 6) + ')';
+  function prepare(node, parent, path, family, leaves, byPath) {
+    Object.assign(node,{parent,path,family});
+    byPath.set(path,node);
+    if (!node.children) { node.index = leaves.length; leaves.push(node); return node.units; }
+    node.units = node.children.reduce((sum,child,i) => sum + prepare(child,node,path + (path.endsWith('\\') ? '' : '\\') + child.name, parent ? family : i, leaves, byPath),0);
+    return node.units;
+  }
+  for (const [key,disk] of Object.entries(disks)) {
+    disk.leaves=[];disk.byPath=new Map();
+    prepare(disk.root,null,key+':\\',0,disk.leaves,disk.byPath);
+  }
+  const s = {drive:'D',folder:D,tab:'map',layout:'grid',mode:'轻载优先',scan:'done',seen:disks.D.leaves.length,asc:false,page:0,detail:null,selected:null};
+  const feedback={style:'toast',result:'success'};
+  let noticeVisible=true, noticeTimer, summaryReturnFocus;
+  let timer, openBeforeDetail;
+  const disk = () => disks[s.drive];
+  const fmt = (units) => (units/10).toLocaleString('en-US',{maximumFractionDigits:1,minimumFractionDigits:1});
+  const size = (units) => fmt(units) + ' GB';
+  const full = () => s.seen >= disk().leaves.length;
+  const visibleSize = (n) => full() ? n.units : n.children ? n.children.reduce((sum,x) => sum+visibleSize(x),0) : n.index < s.seen ? n.units : 0;
+  const shown = (n) => (n.children || []).filter(x=>visibleSize(x)>0);
+  const defaultState = () => ({drive:s.drive,folder:s.folder.path,tab:s.tab,layout:s.layout,mode:s.mode,asc:s.asc,page:s.page,selected:s.selected,noticeStyle:feedback.style,noticeResult:feedback.result});
+  function save() {
+    if (window.openai?.setWidgetState) window.openai.setWidgetState({modelContent:{disk:s.drive,view:s.tab==='map'?'空间总览':'大文件',layout:({both:'并排对比',grid:'矩形网格',ring:'环形图'})[s.layout],mode:s.mode},privateContent:defaultState()}).catch(()=>{});
+  }
+  function restore(snapshot) {
+    const v=snapshot?.privateContent;
+    if(!v||!Object.hasOwn(disks,v.drive)) return;
+    clearTimeout(timer);
+    s.drive=v.drive;
+    const target=disk().byPath.get(v.folder);
+    s.folder=target?.children ? target : disk().root;
+    s.tab=v.tab==='files'?'files':'map';
+    s.layout=['ring','grid','both'].includes(v.layout)?v.layout:'grid';
+    feedback.style=v.noticeStyle==='bar'?'bar':'toast';
+    feedback.result=v.noticeResult==='partial'?'partial':'success';
+    s.selected=disk().byPath.has(v.selected)?v.selected:null;
+    s.mode=v.mode==='均衡'?'均衡':'轻载优先';
+    s.scan='done';s.seen=disk().leaves.length;s.asc=Boolean(v.asc);s.page=Number.isInteger(v.page)?Math.max(0,v.page):0;
+    dismissMenus();closeDetail(false);render();
+  }
+  function typeIcon(n) {
+    if(n.icon) return n.icon;
+    if(/\.(mov|mxf|mp4)$/i.test(n.name)) return 'film';
+    if(/\.wav$/i.test(n.name)) return 'audio-lines';
+    if(/\.(zip|7z)$/i.test(n.name)) return 'file-archive';
+    return 'file';
+  }
+  const safe = (str) => String(str).replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const point = (r,a) => [180 + r*Math.cos(a),180 + r*Math.sin(a)].map(v=>v.toFixed(3)).join(' ');
+  function sector(inner,outer,start,end) {
+    const large = end-start>Math.PI ? '1' : '0';
+    return 'M '+point(outer,start)+' A '+outer+' '+outer+' 0 '+large+' 1 '+point(outer,end)+' L '+point(inner,end)+' A '+inner+' '+inner+' 0 '+large+' 0 '+point(inner,start)+' Z';
+  }
+  const design={gap:3.1};
+  function drawMap() {
+    const node=s.folder, total=visibleSize(node), svg=q('.di-sun');
+    const radii=[68,105,138,169], starts= -2.94;
+    let marks='';
+    function draw(parent, a, b, depth) {
+      if(depth>=3) return;
+      const kids=shown(parent), sum=visibleSize(parent);
+      let last=a;
+      kids.forEach((kid,i)=>{
+        const end=i===kids.length-1 ? b : last + (b-a)*visibleSize(kid)/sum;
+        const tint=[0,17,33][depth] + (depth>0 ? (i%3)*3 : node.parent ? (i%4)*5 : 0);
+        const fill='color-mix(in srgb,'+color(kid.family)+' '+(100-tint)+'%,var(--sheet))';
+        const tip=safe(kid.path)+' · '+size(visibleSize(kid));
+        marks+='<path d="'+sector(radii[depth],radii[depth+1],last,Math.min(end,last+Math.PI*2-.00001))+'" fill="'+fill+'" stroke="var(--groove)" stroke-width="'+design.gap+'" stroke-linejoin="round" data-path="'+safe(kid.path)+'" data-tooltip="'+tip+'"></path>';
+        if(kid.children) draw(kid,last,end,depth+1);
+        last=end;
+      });
+    }
+    if(total) draw(node,starts,starts+Math.PI*2,0);
+    else marks='<circle cx="180" cy="180" r="104" fill="none" stroke="var(--rule)" stroke-width="35"></circle>';
+    svg.innerHTML=marks;
+    q('#di-center-label').textContent=full() ? node.parent ? '目录占用' : '已用空间' : '已发现';
+    q('#di-center-value').textContent=fmt(total);
+    q('#di-up').disabled=!node.parent;
+    q('#di-up').dataset.tooltip=node.parent?'返回上一层':'已在磁盘根目录';
+    const crumbs=[];for(let n=node;n;n=n.parent) crumbs.unshift(n);
+    q('#di-crumbs').innerHTML=ico('hard-drive') + crumbs.map((n,i)=>(i?ico('chevron-right'):'')+'<button type="button" data-path="'+safe(n.path)+'">'+safe(n.parent?n.name:n.path)+'</button>').join('');
+  }
+  function tileLayout(nodes, x, y, w, h, tiles) {
+    if(!nodes.length) return;
+    if(nodes.length===1){tiles.push({n:nodes[0],x,y,w,h});return;}
+    const total=nodes.reduce((sum,n)=>sum+visibleSize(n),0);
+    let cut=1, group=visibleSize(nodes[0]);
+    while(cut<nodes.length-1) {
+      const next=group+visibleSize(nodes[cut]);
+      if(Math.abs(next-total/2)>=Math.abs(group-total/2))break;
+      group=next;cut++;
+    }
+    const fraction=group/total;
+    if(w>=h){
+      const split=w*fraction;
+      tileLayout(nodes.slice(0,cut),x,y,split,h,tiles);
+      tileLayout(nodes.slice(cut),x+split,y,w-split,h,tiles);
+    }else{
+      const split=h*fraction;
+      tileLayout(nodes.slice(0,cut),x,y,w,split,tiles);
+      tileLayout(nodes.slice(cut),x,y+split,w,h-split,tiles);
+    }
+  }
+  function drawTiles() {
+    const plot=q('#di-mosaic'), width=plot.clientWidth, height=plot.clientHeight;
+    if(!width||!height)return;
+    const signature=[s.folder.path,s.seen,width,height].join('|');
+    if(plot.dataset.signature===signature)return;
+    plot.dataset.signature=signature;
+    const children=shown(s.folder).sort((a,b)=>visibleSize(b)-visibleSize(a));
+    const tiles=[];
+    tileLayout(children,0,0,width,height,tiles);
+    plot.innerHTML=tiles.map(({n,x,y,w,h},i)=>{
+      const compact=h<86||w<94, narrow=w<53&&w>=23&&h>=63;
+      const fitsName=(w>=45&&h>=23)||narrow, fitsSize=w>=58&&h>=43;
+      const style='left:'+x+'px;top:'+y+'px;width:'+w+'px;height:'+h+'px;--node:'+color(n.family)+';--tile:color-mix(in srgb,var(--node) '+(s.folder.parent?50+(i%4)*8:64)+'%,var(--sheet))';
+      const label=n.path+' · '+size(visibleSize(n));
+      return '<button type="button" data-path="'+safe(n.path)+'" data-tooltip="'+safe(label)+'" aria-label="'+safe(label)+'" class="di-block'+(compact?' is-small':'')+(narrow?' is-narrow':'')+'" style="'+style+'"><span class="di-block-face">'+
+        (!compact?ico(typeIcon(n)):'')+(fitsName?'<span class="di-block-name">'+safe(n.name)+'</span>':'')+
+        (fitsSize?'<span class="di-block-size">'+fmt(visibleSize(n))+'<small>GB</small></span>':'')+'</span></button>';
+    }).join('')||'<div class="di-empty">等待扫描结果</div>';
+  }
+  function drawComparison() {
+    q('#di-overview').dataset.layout=s.layout;
+    root.querySelectorAll('button[data-layout]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.layout===s.layout)));
+    drawTiles();
+    q('#di-legend').innerHTML=shown(s.folder).map(n=>'<button type="button" class="di-key" style="--node:'+color(n.family)+'" data-path="'+safe(n.path)+'" aria-label="'+safe(n.path)+' · '+size(visibleSize(n))+'"><b></b><span><em>'+safe(n.name)+'</em><small>'+size(visibleSize(n))+'</small></span></button>').join('');
+  }
+  function highlightBranch(path) {
+    const areas=root.querySelectorAll('.di-block,.di-key,.di-sun path');
+    let hovered=disk().byPath.get(path);
+    while(hovered&&hovered.parent!==s.folder)hovered=hovered.parent;
+    areas.forEach(area=>{
+      const p=area.dataset.path;
+      const match=hovered&&(p===hovered.path||p.startsWith(hovered.path+'\\'));
+      area.classList.toggle('di-faint',Boolean(hovered&&!match));
+      area.classList.toggle('di-linked',Boolean(match));
+    });
+  }
+  function renderSelection() {
+    root.querySelectorAll('.di-row,.di-block,.di-sun path').forEach(el=>{
+      el.classList.toggle('di-selected',el.dataset.path===s.selected);
+    });
+  }
+  const linked='.di-sun path,.di-block,.di-key';
+  function highlightTarget(target){highlightBranch(target?.closest?.(linked)?.dataset.path);}
+  for(const event of ['pointerover','focusin'])root.addEventListener(event,e=>highlightTarget(e.target));
+  for(const event of ['pointerout','focusout'])root.addEventListener(event,e=>highlightTarget(e.relatedTarget));
+  function row(n, value, subtitle, fraction) {
+    const msg=n.path+' · '+size(value);
+    return '<button class="di-row" type="button" aria-label="'+safe(msg)+'" data-path="'+safe(n.path)+'" style="--node:'+color(n.family)+'"><span class="di-file-icon">'+ico(typeIcon(n))+'</span><span class="di-namecol"><span class="di-name" data-tooltip="'+safe(n.name)+'">'+safe(n.name)+'</span>'+
+      (subtitle ? '<span class="di-path">'+safe(n.parent.path)+'</span>' : '<span class="di-trackbar"><i style="width:'+fraction+'%"></i></span>')+
+      '</span><span class="di-readout">'+fmt(value)+'<small>GB</small></span>'+ico(n.children?'chevron-right':'info')+'</button>';
+  }
+  function renderData() {
+    q('#di-overview').hidden=s.tab!=='map';
+    q('#di-files').hidden=s.tab!=='files';
+    root.querySelectorAll('[data-tab]').forEach(b=>b.setAttribute('aria-pressed',String(b.dataset.tab===s.tab)));
+    if(s.tab==='map') {
+      drawComparison();
+      drawMap();
+      const children=shown(s.folder).sort((a,b)=>(s.asc?1:-1)*(visibleSize(a)-visibleSize(b)));
+      q('#di-rows').innerHTML=children.map(n=>row(n,visibleSize(n),false,visibleSize(n)*100/visibleSize(s.folder))).join('')||'<div class="di-empty">等待扫描结果</div>';
+      q('#di-sort-text').textContent=s.asc?'从小到大':'从大到小';
+      q('#di-sort').setAttribute('aria-label',q('#di-sort-text').textContent+'，点击切换');
+      q('#di-sort').innerHTML='<span id="di-sort-text">'+(s.asc?'从小到大':'从大到小')+'</span>'+ico(s.asc?'arrow-up-narrow-wide':'arrow-down-wide-narrow');
+    } else {
+      const files=disk().leaves.slice(0,s.seen).sort((a,b)=>b.units-a.units);
+      const pages=Math.max(1,Math.ceil(files.length/6));
+      s.page=Math.max(0,Math.min(s.page,pages-1));
+      q('#di-file-count').textContent=files.length+' 个文件';
+      q('#di-file-rows').innerHTML=files.slice(s.page*6,s.page*6+6).map(n=>row(n,n.units,true,0)).join('')||'<div class="di-empty">等待扫描结果</div>';
+      q('#di-pager').innerHTML=pages===1?'':'<button type="button" class="di-icon" data-page="-1" aria-label="上一页" '+(s.page===0?'disabled':'')+'>'+ico('chevron-left')+'</button><span>'+(s.page+1)+' / '+pages+'</span><button type="button" class="di-icon" data-page="1" aria-label="下一页" '+(s.page===pages-1?'disabled':'')+'>'+ico('chevron-right')+'</button>';
+    }
+  }
+  function renderStatus() {
+    const labels={done:'扫描完成',running:'正在扫描',paused:'已暂停',stopped:'已停止'};
+    q('#di-status').textContent=labels[s.scan];
+    q('#di-count').textContent=s.seen+' 个文件';
+    q('#di-mode-name').textContent=s.mode;
+    q('#di-scan').disabled=s.scan==='running'||s.scan==='paused';
+    const active=s.scan==='running'||s.scan==='paused';
+    const name=s.scan==='running'?'暂停扫描':'继续扫描';
+    q('#di-transport').innerHTML=active?'<button type="button" class="di-icon" data-action="pause" aria-label="'+name+'" data-tooltip="'+name+'">'+ico(s.scan==='running'?'pause':'play')+'</button><button type="button" class="di-icon" data-action="stop" aria-label="停止扫描" data-tooltip="停止扫描">'+ico('square')+'</button>':'';
+    renderFeedback();
+  }
+  function renderFeedback() {
+    const done=s.scan==='done', partial=feedback.result==='partial'&&done;
+    q('#di-status').textContent=done?'扫描完成':({running:'正在扫描',paused:'已暂停',stopped:'已停止'})[s.scan];
+    q('.di-status-icon').innerHTML=ico(done?'circle-check':s.scan==='paused'?'circle-pause':s.scan==='stopped'?'circle-stop':'scan-line');
+    q('#di-count').textContent=s.seen+' 个文件 · '+size(visibleSize(disk().root));
+    q('#di-summary-button').classList.toggle('has-issues',partial);
+    q('#di-summary-button').innerHTML=ico(partial?'circle-alert':'chart-no-axes-combined')+'<span>'+(partial?'1 项未读取':'扫描详情')+'</span>';
+    q('#di-toast').hidden=!done||!noticeVisible||feedback.style!=='toast';
+    root.classList.toggle('di-toast-style-bar',feedback.style==='bar'&&done);
+    q('#di-toast').classList.toggle('has-issues',partial);
+    q('#di-toast-title').textContent=partial?'扫描完成，1 项未读取':'扫描完成';
+    q('#di-toast-caption').textContent=s.seen+' 个文件 · '+size(visibleSize(disk().root));
+    q('#di-toast-icon').innerHTML=ico(partial?'circle-alert':'check');
+  }
+  function dismissNotice() {
+    clearTimeout(noticeTimer);noticeVisible=false;renderFeedback();icons();
+  }
+  function expireNotice() {
+    clearTimeout(noticeTimer);
+    noticeTimer=setTimeout(()=>{
+      const toast=q('#di-toast');
+      if(toast.matches(':hover')||toast.contains(document.activeElement)) expireNotice();
+      else dismissNotice();
+    },6000);
+  }
+  function openSummary(trigger) {
+    summaryReturnFocus=trigger;
+    q('#di-summary-stats').innerHTML=['磁盘',s.drive+':','状态',s.scan==='done'?'扫描完成':'扫描中','文件',s.seen+' 个','实际占用',size(visibleSize(disk().root))].map(v=>'<span>'+safe(v)+'</span>').join('');
+    q('#di-summary-issues').innerHTML=feedback.result==='partial'?'<div class="di-issue-row">'+ico('circle-alert')+'<div>System Volume Information<p>访问受限 · 已跳过</p></div></div>':'';
+    q('#di-summary-modal').hidden=false;icons();q('#di-summary-close').focus();
+  }
+  function closeSummary() {
+    q('#di-summary-modal').hidden=true;
+    if(summaryReturnFocus?.isConnected&&!summaryReturnFocus.closest('[hidden]'))summaryReturnFocus.focus();
+    else q('#di-summary-button').focus();
+  }
+  function render() {
+    const d=disk();
+    q('#di-drive-name').textContent='本地磁盘 ('+s.drive+':)';
+    q('#di-meta').innerHTML='<span>'+s.drive+':\\\\</span><b></b><span>NTFS</span><b></b><span>SSD</span>';
+    q('#di-meta span').textContent=d.root.path;
+    q('#di-used').textContent=size(d.root.units);
+    q('#di-cap').textContent='共 '+(d.cap===10000?'1 TB':'512 GB');
+    q('#di-meter').innerHTML=d.root.children.map(n=>'<b style="width:'+(n.units/d.cap*100)+'%;background:'+color(n.family)+'"></b>').join('');
+    renderData();renderStatus();renderSelection();icons();
+  }
+  function dismissMenus() {
+    for(const [button,pop] of [['#di-drive-button','#di-drives'],['#di-mode','#di-modes'],['#di-pick-folder','#di-folder-menu']]) {
+      q(pop).hidden=true;q(button).setAttribute('aria-expanded','false');
+    }
+  }
+  function toggleMenu(kind) {
+    if(kind==='folder') {
+      const pop=q('#di-folder-menu'),opening=pop.hidden;dismissMenus();
+      if(!opening)return;
+      const choices=(s.folder.children||[]).filter(n=>n.children);
+      pop.innerHTML=choices.length?choices.map(n=>'<button type="button" data-path="'+safe(n.path)+'">'+ico('folder')+safe(n.name)+'</button>').join(''):'<span class="di-quiet">当前目录无子文件夹</span>';
+      pop.hidden=false;q('#di-pick-folder').setAttribute('aria-expanded','true');icons();return;
+    }
+    const isDrive=kind==='drive';
+    const pop=q(isDrive?'#di-drives':'#di-modes'), b=q(isDrive?'#di-drive-button':'#di-mode');
+    const opening=pop.hidden;dismissMenus();if(!opening) return;
+    const options=isDrive?Object.entries(disks).map(([v,d])=>[v,d.name,v+':','hard-drive']):[['轻载优先','轻载优先','低并发','leaf'],['均衡','均衡','适中并发','gauge']];
+    pop.innerHTML=options.map(([v,name,note,icon])=>'<button type="button" data-'+kind+'="'+v+'" aria-pressed="'+(v===(isDrive?s.drive:s.mode))+'">'+ico(icon)+(isDrive?'<span class="di-drive-option"><span>本地磁盘 ('+v+':)</span><small>'+size(disks[v].root.units)+' / '+(disks[v].cap===10000?'1 TB':'512 GB')+'</small></span>'+(v===s.drive?ico('check'):''):safe(name)+'<small>'+safe(note)+'</small>')+'</button>').join('');
+    pop.hidden=false;b.setAttribute('aria-expanded','true');icons();
+  }
+  function closeDetail(restoreFocus=true) {
+    q('#di-modal').hidden=true;s.detail=null;
+    if(restoreFocus&&openBeforeDetail?.isConnected) openBeforeDetail.focus();
+  }
+  function openNode(n,trigger) {
+    if(!n) return;
+    dismissMenus();
+    if(n.children) {s.tab='map';s.folder=n;render();save();return;}
+    s.detail=n;s.selected=n.path;openBeforeDetail=trigger;
+    renderSelection();save();
+    q('#di-file-detail').innerHTML='<span class="di-file-icon" style="--node:'+color(n.family)+'">'+ico(typeIcon(n))+'</span><h3>'+safe(n.name)+'</h3><div class="di-detail-path">'+safe(n.path)+'</div><div class="di-readout">'+size(n.units)+' <small>实际占用</small></div>';
+    q('#di-modal').hidden=false;icons();q('#di-close').focus();
+  }
+  function tick() {
+    clearTimeout(timer);
+    if(s.scan!=='running') return;
+    timer=setTimeout(()=>{
+      s.seen=Math.min(disk().leaves.length,s.seen+(s.mode==='轻载优先'?3:5));
+      if(full()) {s.scan='done';noticeVisible=true;expireNotice();}
+      render();tick();
+    },s.mode==='轻载优先'?400:300);
+  }
+  function switchDisk(key) {
+    clearTimeout(timer);dismissNotice();s.drive=key;s.folder=disk().root;s.seen=disk().leaves.length;s.page=0;s.scan='done';s.selected=null;
+    dismissMenus();render();save();
+  }
+  root.addEventListener('click',e=>{
+    const x=e.target.closest('button,path[data-path]');
+    if(!x) {if(e.target===q('#di-modal')) closeDetail();dismissMenus();return;}
+    if(x.id==='di-drive-button') return toggleMenu('drive');
+    if(x.id==='di-mode') return toggleMenu('mode');
+    if(x.id==='di-pick-folder') return toggleMenu('folder');
+    if(x.dataset.drive) return switchDisk(x.dataset.drive);
+    dismissMenus();
+    if(x.dataset.layout){s.layout=x.dataset.layout;render();save();return;}
+    if(x.dataset.mode){s.mode=x.dataset.mode;render();tick();save();return;}
+    if(x.dataset.tab){s.tab=x.dataset.tab;render();save();return;}
+    if(x.dataset.path) return openNode(disk().byPath.get(x.dataset.path),x);
+    if(x.dataset.page){s.page+=Number(x.dataset.page);render();save();return;}
+    if(x.id==='di-up'&&s.folder.parent) return openNode(s.folder.parent,x);
+    if(x.id==='di-sort'){s.asc=!s.asc;render();save();return;}
+    if(x.id==='di-close') return closeDetail();
+    if(x.id==='di-locate'&&s.detail){const parent=s.detail.parent;closeDetail(false);openNode(parent,x);return;}
+    if(x.id==='di-scan'){dismissNotice();s.folder=disk().root;s.page=0;s.selected=null;s.seen=0;s.scan='running';render();tick();return;}
+    if(x.dataset.action==='pause'){s.scan=s.scan==='running'?'paused':'running';render();tick();return;}
+    if(x.dataset.action==='stop'){clearTimeout(timer);s.scan='stopped';render();}
+  });
+  root.addEventListener('click',e=>{
+    const button=e.target.closest('button');
+    if(button?.id==='di-toast-close'){dismissNotice();q('#di-summary-button').focus();}
+    if(['di-toast-details','di-summary-button'].includes(button?.id))openSummary(button);
+    if(button?.id==='di-summary-close'||e.target===q('#di-summary-modal'))closeSummary();
+  });
+  root.addEventListener('keydown',e=>{
+    if(!q('#di-summary-modal').hidden) {
+      if(e.key==='Escape')closeSummary();
+      if(e.key==='Tab'){e.preventDefault();q('#di-summary-close').focus();}
+    }
+    if(e.key==='Escape'){if(s.detail)closeDetail();else dismissMenus();}
+    if(s.detail&&e.key==='Tab'){
+      const first=q('#di-close'), last=q('#di-locate');
+      if(e.shiftKey&&document.activeElement===first){e.preventDefault();last.focus();}
+      if(!e.shiftKey&&document.activeElement===last){e.preventDefault();first.focus();}
+    }
+  });
+  render();
+  new ResizeObserver(()=>{drawTiles();renderSelection();icons();}).observe(q('#di-mosaic'));
+  restore(window.openai?.widgetState);
+  window.addEventListener('openai:set_globals',e=>{if(e.detail?.globals?.widgetState)restore(e.detail.globals.widgetState);});
+  if(globalThis.Tweak){
+    const tweak=new Tweak({container:q('.di-map'),onChange:()=>{drawMap();icons();}});
+    tweak.addSlider(design,'gap',{label:'色块间距',min:1.5,max:5,step:.5,unit:'px'});
+    const noticeTweak=new Tweak({container:root,onChange:()=>{noticeVisible=true;renderFeedback();icons();save();}});
+    noticeTweak.addSelect(feedback,'style',{label:'完成提示',options:[{label:'浮动轻提示',value:'toast'},{label:'状态栏提示',value:'bar'}]});
+    noticeTweak.addSelect(feedback,'result',{label:'扫描结果',options:[{label:'全部完成',value:'success'},{label:'部分未读取',value:'partial'}]});
+  }
+})();
+</script>
