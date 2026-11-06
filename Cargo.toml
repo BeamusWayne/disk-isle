@@ -2,7 +2,9 @@
 name = "disk-isle"
 version = "0.2.0"
 edition = "2024"
-description = "Portable disk space explorer"
+description = "Portable disk space analyzer for Windows with treemap, sunburst, and comparison views"
+license = "MIT"
+repository = "https://github.com/BeamusWayne/disk-isle"
 
 [dependencies]
 eframe = { version = "=0.33.3", default-features = false, features = ["glow", "default_fonts"] }
