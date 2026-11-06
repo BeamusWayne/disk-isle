@@ -1,0 +1,20 @@
+[package]
+name = "disk-isle"
+version = "0.1.0"
+edition = "2024"
+description = "Portable disk space explorer"
+
+[dependencies]
+eframe = { version = "=0.33.3", default-features = false, features = ["glow", "default_fonts"] }
+rusqlite = { version = "0.38", features = ["bundled"] }
+rfd = { version = "0.16", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_Storage_FileSystem", "Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_System_IO"] }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "unwind"

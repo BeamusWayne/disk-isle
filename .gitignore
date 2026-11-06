@@ -1,0 +1,7 @@
+/target/
+/releases/
+/work/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.tmp
